@@ -78,7 +78,14 @@ original key is kept either way. Status is shown under **داده و پشتیب�
 
 ### Floor map
 
-**ایستگاه‌ها → ویرایش چیدمان** shows the stations on a 2D board (`@dnd-kit/core`).
+**نقشه‌ی سالن** (sidebar) is the live, read-only floor view: every station at
+its saved position with the dashboard's own card — live timer and cost, start,
+buffet and checkout through the same invoice dialog. Nothing can be moved
+there and nothing is written on timer ticks. Tab follows the visual
+right-to-left reading order, and on narrower windows the board shrinks to fit
+(down to 70%, then scrolls) without changing any saved coordinate.
+
+**ایستگاه‌ها → ویرایش چیدمان** is the layout editor (`@dnd-kit/core`).
 Drag a card, or focus it and use Space / arrow keys / Space; the position is
 saved immediately (`update_station_position`). Coordinates are physical room
 positions in px from the board's top-left, so the board is not mirrored for
@@ -118,8 +125,8 @@ e2e/                    WebDriver tests against the real app (tauri-driver)
 | Layer | Command | Covers |
 | --- | --- | --- |
 | Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation |
-| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off |
-| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart |
+| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off, layout helpers, double-submission guards, live floor map components (jsdom) |
+| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart, live floor map (read-only, start/checkout once, keyboard, window resize) |
 
 E2E needs `tauri-driver` (`cargo install tauri-driver --locked`), `WebKitWebDriver`
 (`webkit2gtk-driver` package) and a debug build with the embedded frontend:

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-export type View = 'dashboard' | 'stations' | 'rates' | 'settings' | 'data'
+export type View = 'dashboard' | 'floor' | 'stations' | 'rates' | 'settings' | 'data'
 export type StationFilter = 'all' | 'running' | 'paused' | 'available'
 
 export interface CheckoutTarget {
@@ -26,6 +26,10 @@ interface UiStore {
   stationFilter: StationFilter
   setStationFilter: (filter: StationFilter) => void
 
+  /** Stations page shows the layout editor (not persisted). */
+  layoutEditing: boolean
+  setLayoutEditing: (editing: boolean) => void
+
   checkout: CheckoutTarget | null
   openCheckout: (stationId: string) => void
   closeCheckout: () => void
@@ -49,6 +53,9 @@ export const useUiStore = create<UiStore>()(
 
       stationFilter: 'all',
       setStationFilter: (stationFilter) => set({ stationFilter }),
+
+      layoutEditing: false,
+      setLayoutEditing: (layoutEditing) => set({ layoutEditing }),
 
       checkout: null,
       openCheckout: (stationId) => set({ checkout: { stationId, at: Date.now() } }),

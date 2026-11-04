@@ -8,6 +8,7 @@ import { useSessionAlerts } from '@/hooks/useSessionAlerts'
 import { unlockAudio } from '@/lib/sound'
 import { Dashboard } from '@/pages/Dashboard'
 import { DataPage } from '@/pages/DataPage'
+import { FloorPage } from '@/pages/FloorPage'
 import { RatesPage } from '@/pages/RatesPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { StationsPage } from '@/pages/StationsPage'
@@ -16,6 +17,7 @@ import { useUiStore, type View } from '@/store/uiStore'
 
 const VIEWS: Record<View, { title: string; render: () => ReactNode }> = {
   dashboard: { title: 'داشبورد', render: () => <Dashboard /> },
+  floor: { title: 'نقشه‌ی سالن', render: () => <FloorPage /> },
   stations: { title: 'ایستگاه‌ها', render: () => <StationsPage /> },
   rates: { title: 'نرخ‌ها و دسته‌ها', render: () => <RatesPage /> },
   settings: { title: 'تنظیمات', render: () => <SettingsPage /> },
@@ -34,7 +36,8 @@ function Shell() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar title={current.title} />
-        <main className="flex-1 overflow-y-auto px-6 pt-5 pb-8">{current.render()}</main>
+        {/* Stable gutter: a toggling scrollbar would resize the live map, rescale it and toggle again. */}
+        <main className="flex-1 overflow-y-auto px-6 pt-5 pb-8 [scrollbar-gutter:stable]">{current.render()}</main>
       </div>
 
       <InvoiceModal />

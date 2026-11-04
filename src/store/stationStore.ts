@@ -35,6 +35,9 @@ export type StationStore = StationState & StationActions
 /** Latest position save; older responses must not overwrite a newer drop. */
 let moveSequence = 0
 
+/** One checkout per station at a time: a repeat call joins the one in flight. */
+const checkoutsInFlight = new Map<string, Promise<Invoice>>()
+
 function bySession(sessions: Session[]): Record<string, Session> {
   return Object.fromEntries(sessions.map((s) => [s.stationId, s]))
 }
@@ -112,11 +115,27 @@ export const useStationStore = create<StationStore>()((set, get) => {
       }
     },
 
-    checkout: async (stationId, at, expectedTotal) => {
-      const result = await api.checkout(sessionId(get().sessions[stationId]), at, expectedTotal)
-      get().setFloor(result.floor)
-      void get().refreshSummary()
-      return result.invoice
+    checkout: (stationId, at, expectedTotal) => {
+      const existing = checkoutsInFlight.get(stationId)
+      if (existing) return existing
+      const run = (async () => {
+        set((s) => ({ pending: { ...s.pending, [stationId]: true } }))
+        try {
+          const result = await api.checkout(sessionId(get().sessions[stationId]), at, expectedTotal)
+          get().setFloor(result.floor)
+          void get().refreshSummary()
+          return result.invoice
+        } finally {
+          checkoutsInFlight.delete(stationId)
+          set((s) => {
+            const pending = { ...s.pending }
+            delete pending[stationId]
+            return { pending }
+          })
+        }
+      })()
+      checkoutsInFlight.set(stationId, run)
+      return run
     },
   }
 })
