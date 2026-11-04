@@ -1,0 +1,409 @@
+[
+  {
+    "name": "one running segment, exactly one hour",
+    "startedAt": 0,
+    "at": 3600000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": null,
+        "controllers": 2,
+        "hourlyRate": 150000
+      }
+    ],
+    "orders": [],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 3600000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 150000,
+          "durationMs": 3600000,
+          "amount": 150000
+        }
+      ],
+      "timeTotal": 150000,
+      "ordersTotal": 0,
+      "subtotal": 150000,
+      "rounding": 0,
+      "total": 150000
+    }
+  },
+  {
+    "name": "pauses are gaps; same rate merges into one line",
+    "startedAt": 0,
+    "at": 3000000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": 1200000,
+        "controllers": 2,
+        "hourlyRate": 150000
+      },
+      {
+        "startedAt": 1800000,
+        "endedAt": null,
+        "controllers": 2,
+        "hourlyRate": 150000
+      }
+    ],
+    "orders": [],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 2400000,
+      "pausedMs": 600000,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 150000,
+          "durationMs": 2400000,
+          "amount": 100000
+        }
+      ],
+      "timeTotal": 100000,
+      "ordersTotal": 0,
+      "subtotal": 100000,
+      "rounding": 0,
+      "total": 100000
+    }
+  },
+  {
+    "name": "controller change splits lines; half rounds up",
+    "startedAt": 0,
+    "at": 2700000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": 1800000,
+        "controllers": 2,
+        "hourlyRate": 150000
+      },
+      {
+        "startedAt": 1800000,
+        "endedAt": null,
+        "controllers": 4,
+        "hourlyRate": 230000
+      }
+    ],
+    "orders": [
+      {
+        "unitPrice": 25000,
+        "quantity": 2
+      }
+    ],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 2700000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 150000,
+          "durationMs": 1800000,
+          "amount": 75000
+        },
+        {
+          "controllers": 4,
+          "hourlyRate": 230000,
+          "durationMs": 900000,
+          "amount": 57500
+        }
+      ],
+      "timeTotal": 132500,
+      "ordersTotal": 50000,
+      "subtotal": 182500,
+      "rounding": 500,
+      "total": 183000
+    }
+  },
+  {
+    "name": "round up to 5,000",
+    "startedAt": 0,
+    "at": 420000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": null,
+        "controllers": 1,
+        "hourlyRate": 100000
+      }
+    ],
+    "orders": [
+      {
+        "unitPrice": 45000,
+        "quantity": 1
+      }
+    ],
+    "rounding": {
+      "unit": 5000,
+      "mode": "up"
+    },
+    "expected": {
+      "playedMs": 420000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 1,
+          "hourlyRate": 100000,
+          "durationMs": 420000,
+          "amount": 11667
+        }
+      ],
+      "timeTotal": 11667,
+      "ordersTotal": 45000,
+      "subtotal": 56667,
+      "rounding": 3333,
+      "total": 60000
+    }
+  },
+  {
+    "name": "round down to 500",
+    "startedAt": 0,
+    "at": 2233000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": null,
+        "controllers": 2,
+        "hourlyRate": 120000
+      }
+    ],
+    "orders": [
+      {
+        "unitPrice": 30000,
+        "quantity": 1
+      },
+      {
+        "unitPrice": 10000,
+        "quantity": 3
+      }
+    ],
+    "rounding": {
+      "unit": 500,
+      "mode": "down"
+    },
+    "expected": {
+      "playedMs": 2233000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 120000,
+          "durationMs": 2233000,
+          "amount": 74433
+        }
+      ],
+      "timeTotal": 74433,
+      "ordersTotal": 60000,
+      "subtotal": 134433,
+      "rounding": -433,
+      "total": 134000
+    }
+  },
+  {
+    "name": "rounding disabled",
+    "startedAt": 0,
+    "at": 2233000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": null,
+        "controllers": 2,
+        "hourlyRate": 120000
+      }
+    ],
+    "orders": [
+      {
+        "unitPrice": 30000,
+        "quantity": 1
+      },
+      {
+        "unitPrice": 10000,
+        "quantity": 3
+      }
+    ],
+    "rounding": {
+      "unit": 0,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 2233000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 120000,
+          "durationMs": 2233000,
+          "amount": 74433
+        }
+      ],
+      "timeTotal": 74433,
+      "ordersTotal": 60000,
+      "subtotal": 134433,
+      "rounding": 0,
+      "total": 134433
+    }
+  },
+  {
+    "name": "half Toman on time cost rounds up",
+    "startedAt": 0,
+    "at": 4000000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": 3600012,
+        "controllers": 1,
+        "hourlyRate": 150000
+      }
+    ],
+    "orders": [],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 3600012,
+      "pausedMs": 399988,
+      "timeLines": [
+        {
+          "controllers": 1,
+          "hourlyRate": 150000,
+          "durationMs": 3600012,
+          "amount": 150001
+        }
+      ],
+      "timeTotal": 150001,
+      "ordersTotal": 0,
+      "subtotal": 150001,
+      "rounding": -1,
+      "total": 150000
+    }
+  },
+  {
+    "name": "zero-length segment produces no line",
+    "startedAt": 1000,
+    "at": 601000,
+    "segments": [
+      {
+        "startedAt": 1000,
+        "endedAt": 1000,
+        "controllers": 2,
+        "hourlyRate": 150000
+      },
+      {
+        "startedAt": 1000,
+        "endedAt": null,
+        "controllers": 3,
+        "hourlyRate": 190000
+      }
+    ],
+    "orders": [],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 600000,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 3,
+          "hourlyRate": 190000,
+          "durationMs": 600000,
+          "amount": 31667
+        }
+      ],
+      "timeTotal": 31667,
+      "ordersTotal": 0,
+      "subtotal": 31667,
+      "rounding": 333,
+      "total": 32000
+    }
+  },
+  {
+    "name": "checkout while paused",
+    "startedAt": 0,
+    "at": 900000,
+    "segments": [
+      {
+        "startedAt": 0,
+        "endedAt": 600000,
+        "controllers": 2,
+        "hourlyRate": 150000
+      }
+    ],
+    "orders": [],
+    "rounding": {
+      "unit": 1000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 600000,
+      "pausedMs": 300000,
+      "timeLines": [
+        {
+          "controllers": 2,
+          "hourlyRate": 150000,
+          "durationMs": 600000,
+          "amount": 25000
+        }
+      ],
+      "timeTotal": 25000,
+      "ordersTotal": 0,
+      "subtotal": 25000,
+      "rounding": 0,
+      "total": 25000
+    }
+  },
+  {
+    "name": "long session, large amounts",
+    "startedAt": 1793813401332,
+    "at": 1793907061331,
+    "segments": [
+      {
+        "startedAt": 1793813401332,
+        "endedAt": null,
+        "controllers": 4,
+        "hourlyRate": 350000
+      }
+    ],
+    "orders": [
+      {
+        "unitPrice": 120000,
+        "quantity": 7
+      }
+    ],
+    "rounding": {
+      "unit": 10000,
+      "mode": "nearest"
+    },
+    "expected": {
+      "playedMs": 93659999,
+      "pausedMs": 0,
+      "timeLines": [
+        {
+          "controllers": 4,
+          "hourlyRate": 350000,
+          "durationMs": 93659999,
+          "amount": 9105833
+        }
+      ],
+      "timeTotal": 9105833,
+      "ordersTotal": 840000,
+      "subtotal": 9945833,
+      "rounding": 4167,
+      "total": 9950000
+    }
+  }
+]
