@@ -82,9 +82,10 @@ async function launch(binary = APP) {
   await d.quit()
   d = new Driver()
   await d.start(binary)
-  await d.waitFor(() => d.exec("return document.querySelectorAll('article[aria-label]').length > 0"), {
+  // The app reopens on the last view (persisted UI preference), so wait for the shell.
+  await d.waitFor(() => d.exec(`return !!document.querySelector('nav[aria-label="منوی اصلی"]')`), {
     timeout: 20_000,
-    message: 'dashboard cards',
+    message: 'app shell',
   })
 }
 
@@ -193,6 +194,9 @@ async function localStorageGet(key) {
 }
 
 // ---- scenarios -----------------------------------------------------------------
+
+// Not a seeded plan name, so the run works with or without the legacy upgrade step.
+const E2E_PLAN = 'اتاق VIP ویژه'
 
 const results = []
 async function step(name, fn) {
@@ -308,12 +312,12 @@ try {
   await step('admin: create a rate plan with controller pricing', async () => {
     await nav(`نرخ${ZWNJ}ها و دسته${ZWNJ}ها`)
     await clickX(`//button[contains(., 'نرخ جدید')]`)
-    await d.type(await control('نام'), 'اتاق VIP')
+    await d.type(await control('نام'), E2E_PLAN)
     await d.type(await d.css(`[role=dialog] input[aria-label="نرخ ساعتی ${fa(1)} دسته"]`), '250000')
     await d.type(await d.css(`[role=dialog] input[aria-label="نرخ ساعتی ${fa(2)} دسته"]`), '۳۰۰۰۰۰')
     await clickX(`//div[@role='dialog']//button[normalize-space()='ذخیره']`)
     await toastSeen('نرخ جدید اضافه شد')
-    await d.waitFor(() => d.exec(`const a = document.querySelector('article[aria-label="اتاق VIP"]'); return a && a.innerText.includes('۲۵۰٬۰۰۰') && a.innerText.includes('۳۰۰٬۰۰۰')`), { message: 'plan card' })
+    await d.waitFor(() => d.exec(`const a = document.querySelector('article[aria-label="' + arguments[0] + '"]'); return a && a.innerText.includes('۲۵۰٬۰۰۰') && a.innerText.includes('۳۰۰٬۰۰۰')`, E2E_PLAN), { message: 'plan card' })
     await shot('03-rates-page')
   })
 
@@ -324,7 +328,7 @@ try {
       await d.type(await control('نام'), 'اتاق VIP ۱')
       await clickX(`//div[@role='dialog']//button[@role='radio'][normalize-space()='VIP']`)
       const plan = await control('نرخ')
-      const planId = await d.exec(`return [...arguments[0].options].find(o => o.textContent === 'اتاق VIP').value`, { [ELEMENT]: plan })
+      const planId = await d.exec(`return [...arguments[0].options].find(o => o.textContent === arguments[1]).value`, { [ELEMENT]: plan }, E2E_PLAN)
       await selectOption(plan, planId)
       await clickX(`//div[@role='dialog']//button[contains(., 'افزودن ایستگاه')]`)
       if (attempt === 1) {
@@ -409,6 +413,54 @@ try {
     await waitCard(station(6), (i) => i.text.includes('آزاد'), 'still restored')
     await waitCard('اتاق VIP ۱', () => true, 'admin changes from before backup kept')
     await shot('09-final-dashboard')
+  })
+  await step('floor map: drag (pointer + keyboard) in edit mode; positions survive restart', async () => {
+    const mapCard = (id) => `[data-station-id="${id}"]`
+    const read = (id) =>
+      d.exec(`const el = document.querySelector(arguments[0]); return el && [parseInt(el.style.left), parseInt(el.style.top)]`, mapCard(id))
+    const openMap = async () => {
+      await nav(`ایستگاه${ZWNJ}ها`)
+      await d.click(await d.css('button[role=switch][aria-label="ویرایش چیدمان"]'))
+      await d.waitFor(() => read('station-2'), { message: 'floor map' })
+    }
+    await openMap()
+    const layout = await d.exec(`const c = document.querySelector(arguments[0]);
+      return { board: getComputedStyle(document.querySelector('[data-testid=floor-board]')).direction,
+               card: getComputedStyle(c).direction, inert: c.firstElementChild.inert }`, mapCard('station-2'))
+    assert(layout.board === 'ltr' && layout.card === 'rtl', `physical board, RTL cards (${JSON.stringify(layout)})`)
+    assert(layout.inert, 'card buttons inert while arranging')
+
+    // Pointer drag.
+    const [x0, y0] = await read('station-2')
+    await d.dragBy(await d.css(mapCard('station-2')), 120, 64)
+    const dragged = await d.waitFor(async () => {
+      const p = await read('station-2')
+      return p[0] !== x0 || p[1] !== y0 ? p : null
+    }, { message: 'station-2 moved' })
+    assert(Math.abs(dragged[0] - (x0 + 120)) <= 4 && Math.abs(dragged[1] - (y0 + 64)) <= 4, `dropped near target: ${dragged} from ${[x0, y0]}`)
+    assert(dragged[0] % 8 === 0 && dragged[1] % 8 === 0, 'snapped to the 8px grid')
+
+    // Keyboard drag: Space, → →, Space (25px per step).
+    const [kx0, ky0] = await read('station-3')
+    const handle = await d.css(mapCard('station-3'))
+    for (const key of ['\uE00D', '\uE014', '\uE014', '\uE00D']) {
+      await d.type(handle, key)
+      await sleep(120)
+    }
+    const keyed = await d.waitFor(async () => {
+      const p = await read('station-3')
+      return p[0] !== kx0 ? p : null
+    }, { message: 'station-3 moved by keyboard' })
+    assert(Math.abs(keyed[0] - (kx0 + 50)) <= 4 && Math.abs(keyed[1] - ky0) <= 4, `keyboard moved ~50px right: ${keyed} from ${[kx0, ky0]}`)
+    await sleep(400)
+    await shot('10-floor-map-edit')
+
+    await launch(APP)
+    await openMap()
+    assert(JSON.stringify(await read('station-2')) === JSON.stringify(dragged), 'pointer-dragged position persisted')
+    assert(JSON.stringify(await read('station-3')) === JSON.stringify(keyed), 'keyboard-moved position persisted')
+    await nav('داشبورد')
+    await waitCard(station(1), (i) => i.text.includes('در حال بازی'), 'dashboard unaffected')
   })
 } catch {
   // reported below

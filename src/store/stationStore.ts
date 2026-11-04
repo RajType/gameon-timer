@@ -24,11 +24,16 @@ interface StationActions {
   setControllers: (stationId: string, controllers: number) => Promise<void>
   addOrderItem: (stationId: string, productId: string) => Promise<void>
   removeOrderItem: (stationId: string, productId: string) => Promise<void>
+  /** Optimistic: the card stays where it was dropped; reverted if saving fails. */
+  moveStation: (stationId: string, posX: number, posY: number) => Promise<void>
   /** Throws on failure so the checkout dialog can react (e.g. stale total). */
   checkout: (stationId: string, at: number, expectedTotal: number) => Promise<Invoice>
 }
 
 export type StationStore = StationState & StationActions
+
+/** Latest position save; older responses must not overwrite a newer drop. */
+let moveSequence = 0
 
 function bySession(sessions: Session[]): Record<string, Session> {
   return Object.fromEntries(sessions.map((s) => [s.stationId, s]))
@@ -90,6 +95,22 @@ export const useStationStore = create<StationStore>()((set, get) => {
       mutate(stationId, 'افزودن به سفارش ناموفق بود', (s) => api.addOrderItem(sessionId(s), productId)),
     removeOrderItem: (stationId, productId) =>
       mutate(stationId, 'حذف از سفارش ناموفق بود', (s) => api.removeOrderItem(sessionId(s), productId)),
+
+    moveStation: async (stationId, posX, posY) => {
+      const previous = get().stations.find((s) => s.id === stationId)
+      if (!previous) return
+      const sequence = ++moveSequence
+      const place = (x: number, y: number) =>
+        set((s) => ({ stations: s.stations.map((st) => (st.id === stationId ? { ...st, posX: x, posY: y } : st)) }))
+      place(posX, posY)
+      try {
+        const floor = await api.updateStationPosition(stationId, posX, posY)
+        if (sequence === moveSequence) get().setFloor(floor)
+      } catch (error) {
+        place(previous.posX, previous.posY)
+        toastError('ذخیره‌ی جای ایستگاه انجام نشد', error)
+      }
+    },
 
     checkout: async (stationId, at, expectedTotal) => {
       const result = await api.checkout(sessionId(get().sessions[stationId]), at, expectedTotal)
