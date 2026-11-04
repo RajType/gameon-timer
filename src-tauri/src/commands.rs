@@ -184,6 +184,16 @@ pub async fn set_station_enabled(
 }
 
 #[tauri::command]
+pub async fn update_station_position(
+    state: State<'_, AppState>,
+    id: String,
+    pos_x: i32,
+    pos_y: i32,
+) -> AppResult<Floor> {
+    write_floor(&state, |tx| admin::update_station_position(tx, &id, pos_x, pos_y, now_ms()))
+}
+
+#[tauri::command]
 pub async fn create_rate_plan(state: State<'_, AppState>, input: RatePlanInput) -> AppResult<Snapshot> {
     write_snapshot(&state, |tx| admin::create_rate_plan(tx, &input, now_ms()).map(|_| ()))
 }

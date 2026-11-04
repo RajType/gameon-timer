@@ -93,6 +93,25 @@ pub fn set_station_enabled(conn: &Connection, id: &str, enabled: bool, now: i64)
     Ok(())
 }
 
+/// Move a station on the floor plan. Position is layout only: allowed while a
+/// session is open and never touches billing.
+pub fn update_station_position(
+    conn: &Connection,
+    id: &str,
+    pos_x: i32,
+    pos_y: i32,
+    now: i64,
+) -> AppResult<()> {
+    let updated = conn.execute(
+        "UPDATE stations SET pos_x = ?2, pos_y = ?3, updated_at = ?4 WHERE id = ?1",
+        params![id, pos_x, pos_y, now],
+    )?;
+    if updated == 0 {
+        return Err(not_found("ایستگاه پیدا نشد."));
+    }
+    Ok(())
+}
+
 fn validate_tiers(tiers: &[RateTier]) -> AppResult<Vec<RateTier>> {
     if tiers.is_empty() {
         return Err(validation("دست‌کم یک نرخ تعریف کنید."));

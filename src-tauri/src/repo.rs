@@ -58,10 +58,12 @@ fn station_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Station> {
         rate_plan_id: row.get(3)?,
         enabled: row.get(4)?,
         sort_order: row.get(5)?,
+        pos_x: row.get(6)?,
+        pos_y: row.get(7)?,
     })
 }
 
-const STATION_COLUMNS: &str = "id, name, kind, rate_plan_id, enabled, sort_order";
+const STATION_COLUMNS: &str = "id, name, kind, rate_plan_id, enabled, sort_order, pos_x, pos_y";
 
 pub fn load_stations(conn: &Connection) -> AppResult<Vec<Station>> {
     let mut stmt =

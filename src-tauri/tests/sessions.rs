@@ -256,3 +256,25 @@ fn admin_rules() {
     s.rounding_unit = 750;
     assert!(tx(&mut conn, |c| admin::update_settings(c, &s, T0)).is_err());
 }
+
+#[test]
+fn station_position_is_layout_only_and_persists() {
+    let dir = temp();
+    let (mut conn, _) = seeded(dir.path());
+    let id = start(&mut conn, "station-1", Some(2), T0);
+    let before = repo::preview_checkout(&conn, &id, T0 + HOUR, T0 + HOUR).unwrap();
+
+    // Allowed while a session is open; negative coordinates are fine.
+    tx(&mut conn, |c| admin::update_station_position(c, "station-1", 340, -25, T0 + MIN)).unwrap();
+    let missing = tx(&mut conn, |c| admin::update_station_position(c, "nope", 1, 1, T0)).unwrap_err();
+    assert!(matches!(missing, AppError::NotFound(_)));
+
+    drop(conn);
+    let conn = open(dir.path());
+    let station = repo::load_station(&conn, "station-1").unwrap();
+    assert_eq!((station.pos_x, station.pos_y), (340, -25));
+    let others = repo::load_stations(&conn).unwrap();
+    assert!(others.iter().filter(|s| s.id != "station-1").all(|s| (s.pos_x, s.pos_y) == (0, 0)));
+    let after = repo::preview_checkout(&conn, &id, T0 + HOUR, T0 + HOUR).unwrap();
+    assert_eq!(after.total, before.total, "moving a station never touches billing");
+}
