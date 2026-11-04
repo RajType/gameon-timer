@@ -215,6 +215,8 @@ async function step(name, fn) {
 
 let legacyPayload = null
 let oldTimer1 = 0
+/** Positions saved in the layout editor, checked again on the live map. */
+let savedPositions = null
 
 try {
   if (LEGACY_APP) {
@@ -459,8 +461,123 @@ try {
     await openMap()
     assert(JSON.stringify(await read('station-2')) === JSON.stringify(dragged), 'pointer-dragged position persisted')
     assert(JSON.stringify(await read('station-3')) === JSON.stringify(keyed), 'keyboard-moved position persisted')
+    savedPositions = { 'station-2': dragged, 'station-3': keyed }
     await nav('داشبورد')
     await waitCard(station(1), (i) => i.text.includes('در حال بازی'), 'dashboard unaffected')
+  })
+  await step('live floor map (نقشه‌ی سالن): saved positions, read-only, live, start/checkout once, keyboard, resize', async () => {
+    const mapCard = (id) => `[data-station-id="${id}"]`
+    const read = (id) =>
+      d.exec(`const el = document.querySelector(arguments[0]); return el && [parseInt(el.style.left), parseInt(el.style.top)]`, mapCard(id))
+    const scale = () => d.exec(`return Number(document.querySelector('[data-testid=floor-board]').dataset.scale)`)
+    const todayInvoices = async () => {
+      await nav('داشبورد')
+      const text = await d.waitFor(() => d.exec(`return document.querySelector('main').innerText`), { message: 'stats' })
+      return toInt(text.match(/فاکتورهای امروز\s*([۰-۹]+)/)[1])
+    }
+    const before = await todayInvoices()
+
+    await nav(`نقشه${ZWNJ}ی سالن`)
+    await d.waitFor(() => d.exec(`return !!document.querySelector('[role=region][aria-label="نقشه‌ی زنده‌ی سالن"] ' + arguments[0])`, mapCard('station-2')), { message: 'live map' })
+
+    // Same coordinates as saved in the editor; read-only.
+    for (const [id, p] of Object.entries(savedPositions)) {
+      assert(JSON.stringify(await read(id)) === JSON.stringify(p), `${id} at saved position ${p}`)
+    }
+    const flags = await d.exec(`const r = document.querySelector('[role=region]');
+      return { roledesc: !!r.querySelector('[aria-roledescription]'), inert: !!r.querySelector('[inert]'), dir: r.dir,
+               cardDir: r.querySelector('[data-station-id]').dir }`)
+    assert(!flags.roledesc && !flags.inert, 'no drag affordances; cards interactive')
+    assert(flags.dir === 'ltr' && flags.cardDir === 'rtl', 'physical LTR board, RTL cards')
+    await d.dragBy(await d.css(mapCard('station-2')), 100, 60)
+    await sleep(400)
+    assert(JSON.stringify(await read('station-2')) === JSON.stringify(savedPositions['station-2']), 'pointer drag moves nothing')
+
+    // Live: the running station's timer ticks.
+    const timer = () => d.exec(`return document.querySelector(arguments[0] + ' p[dir="ltr"]').textContent`, mapCard('station-1'))
+    const t1 = seconds(await timer())
+    await sleep(2100)
+    assert(seconds(await timer()) >= t1 + 2, 'timer ticks on the map')
+    const running = await d.exec(`return document.querySelector(arguments[0] + ' article').className`, mapCard('station-1'))
+    assert(running.includes('border-status-running'), 'running card shown green')
+
+    // Keyboard: from a neutral starting point (a click on the legend above the map — Tab
+    // continues from the last click, per the HTML focus-navigation rules), Tab reaches the
+    // layout button, then the map region, then the first card in reading order.
+    const firstFocusable = await d.exec(`return [...document.querySelectorAll('[role=region] [data-station-id]')]
+      .find(c => c.querySelector('button:not([disabled])'))?.dataset.stationId`)
+    await d.click(await d.css('ul[aria-label="راهنمای وضعیت"]'))
+    const focusPath = []
+    for (let i = 0; i < 3; i++) {
+      await d.pressKey('\uE004') // Tab
+      focusPath.push(await d.exec(`const a = document.activeElement;
+        return a.closest('[data-station-id]')?.dataset.stationId ?? (a.getAttribute('role') === 'region' ? 'region' : a.innerText.trim())`))
+    }
+    assert(
+      JSON.stringify(focusPath) === JSON.stringify(['ویرایش چیدمان', 'region', firstFocusable]),
+      `Tab path ${JSON.stringify(focusPath)} (first card in reading order: ${firstFocusable})`,
+    )
+    await d.exec(`document.querySelector(arguments[0] + ' article footer button').focus(); return true`, mapCard('station-6'))
+    await d.pressKey('\uE007') // Enter on «شروع جلسه»
+    await d.waitFor(async () => (await d.exec(`return document.querySelector(arguments[0]).innerText`, mapCard('station-6'))).includes('در حال بازی'), { message: 'started by keyboard' })
+
+    // A real double click on Start → one session, no error.
+    await dismissToasts()
+    await d.doubleClick(await d.css(`${mapCard('station-7')} article footer button`))
+    await d.waitFor(async () => (await d.exec(`return document.querySelector(arguments[0]).innerText`, mapCard('station-7'))).includes('در حال بازی'), { message: 'started' })
+    await sleep(500)
+    const errors = await d.exec(`return [...document.querySelectorAll('[role=alert]')].map(t => t.innerText)`)
+    assert(errors.length === 0, `no error from the double click: ${errors}`)
+
+    // Checkout from the map through the shared invoice dialog; double click on confirm → one invoice.
+    await clickX(`//div[@data-station-id='station-7']//button[contains(., 'تسویه')]`)
+    await d.waitFor(() => d.exec(`return document.querySelector('[data-testid=invoice-total]')?.textContent`), { message: 'invoice preview' })
+    await d.waitFor(() => d.exec(`return [...document.querySelectorAll('[role=dialog] button')].find(b => b.innerText.includes('پرداخت و بستن جلسه')) ?.disabled === false`), { message: 'confirm enabled' })
+    await d.doubleClick(await d.xpath(`//div[@role='dialog']//button[contains(., 'پرداخت و بستن جلسه')]`))
+    await toastSeen('ثبت شد')
+    await sleep(800)
+    const receipts = await d.exec(`return [...document.querySelectorAll('[role=status]')].filter(t => t.innerText.includes('ثبت شد')).length`)
+    assert(receipts === 1, `one invoice toast (${receipts})`)
+    await d.waitFor(async () => (await d.exec(`return document.querySelector(arguments[0]).innerText`, mapCard('station-7'))).includes('آزاد'), { message: 'free after checkout' })
+    await shot('11-live-floor-map')
+
+    // Place one station near the right edge via the map's «ویرایش چیدمان» shortcut, so a
+    // narrower window has to shrink the board (unplaced stations would just reflow).
+    await clickX(`//main//button[contains(., 'ویرایش چیدمان')]`)
+    await d.waitFor(() => d.exec(`return !!document.querySelector('[role=region][aria-label="ویرایش چیدمان سالن"]')`), { message: 'layout editor' })
+    const [ex0, ey0] = await read('station-3')
+    await d.dragBy(await d.css(mapCard('station-3')), 520, 0)
+    savedPositions['station-3'] = await d.waitFor(async () => {
+      const p = await read('station-3')
+      return p[0] !== ex0 ? p : null
+    }, { message: 'station-3 moved right' })
+    assert(savedPositions['station-3'][1] === ey0, 'moved horizontally only')
+    await nav(`نقشه${ZWNJ}ی سالن`)
+    await d.waitFor(() => d.exec(`return !!document.querySelector('[role=region][aria-label="نقشه‌ی زنده‌ی سالن"]')`), { message: 'live map again' })
+
+    // Window resize: the board shrinks to fit, coordinates stay the same.
+    const original = await d.getWindowRect().catch(() => null)
+    if (original) {
+      const wide = await scale()
+      await d.setWindowRect({ width: 1200, height: 800 })
+      const narrow = await d.waitFor(async () => {
+        const s = await scale()
+        return s < 1 && s < wide ? s : null
+      }, { message: 'board shrinks after the window narrows' })
+      assert(narrow >= 0.7, `scale ${wide} → ${narrow} (legibility floor 0.7)`)
+      for (const [id, p] of Object.entries(savedPositions)) {
+        assert(JSON.stringify(await read(id)) === JSON.stringify(p), `${id} coordinates unchanged after resize`)
+      }
+      const overflow = await d.exec(`return document.documentElement.scrollWidth > document.documentElement.clientWidth`)
+      assert(!overflow, 'no page-level horizontal overflow')
+      await shot('12-live-floor-map-narrow')
+      await d.setWindowRect({ width: original.width, height: original.height })
+      await d.waitFor(async () => ((await scale()) === wide ? true : null), { message: 'scale restored after widening' })
+    } else {
+      console.log('    … window resizing not supported by this driver; resize covered by component tests')
+    }
+
+    assert((await todayInvoices()) === before + 1, 'exactly one invoice recorded today')
   })
 } catch {
   // reported below

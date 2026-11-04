@@ -78,8 +78,14 @@ export class Driver {
     return this.req('GET', this.s(`/element/${id}/text`))
   }
 
+  /** Pointer actions do not auto-scroll (unlike element click): bring the target into view. */
+  scrollIntoView(id) {
+    return this.exec('arguments[0].scrollIntoView({ block: "center", inline: "center" }); return true', { [ELEMENT]: id })
+  }
+
   /** Real pointer drag (W3C Actions): press on the element's centre, move in steps, release. */
   async dragBy(id, dx, dy, steps = 8) {
+    await this.scrollIntoView(id)
     const move = (x, y) => ({ type: 'pointerMove', duration: 40, origin: 'pointer', x, y })
     const actions = [
       { type: 'pointerMove', duration: 0, origin: { [ELEMENT]: id }, x: 0, y: 0 },
@@ -91,6 +97,42 @@ export class Driver {
       actions: [{ type: 'pointer', id: 'mouse', parameters: { pointerType: 'mouse' }, actions }],
     })
     await this.req('DELETE', this.s('/actions'))
+  }
+
+  /** Two real clicks in quick succession (W3C Actions). */
+  async doubleClick(id) {
+    await this.scrollIntoView(id)
+    const actions = [
+      { type: 'pointerMove', duration: 0, origin: { [ELEMENT]: id }, x: 0, y: 0 },
+      { type: 'pointerDown', button: 0 },
+      { type: 'pointerUp', button: 0 },
+      { type: 'pointerDown', button: 0 },
+      { type: 'pointerUp', button: 0 },
+    ]
+    await this.req('POST', this.s('/actions'), {
+      actions: [{ type: 'pointer', id: 'mouse', parameters: { pointerType: 'mouse' }, actions }],
+    })
+    await this.req('DELETE', this.s('/actions'))
+  }
+
+  /**
+   * Real key press on whatever has focus (W3C Actions). Prefer this over
+   * element send-keys for focus navigation: WebKitWebDriver's send-keys can
+   * start Tab navigation from the last pointer position.
+   */
+  async pressKey(key) {
+    await this.req('POST', this.s('/actions'), {
+      actions: [{ type: 'key', id: 'keyboard', actions: [{ type: 'keyDown', value: key }, { type: 'keyUp', value: key }] }],
+    })
+    await this.req('DELETE', this.s('/actions'))
+  }
+
+  getWindowRect() {
+    return this.req('GET', this.s('/window/rect'))
+  }
+
+  setWindowRect(rect) {
+    return this.req('POST', this.s('/window/rect'), rect)
   }
 
   async screenshot() {

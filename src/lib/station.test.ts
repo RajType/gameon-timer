@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { defaultSlot, displayPosition, FLOOR, isPlaced, snapPosition } from './station'
+import {
+  boardExtent,
+  countByStatus,
+  defaultSlot,
+  displayPosition,
+  fitScale,
+  FLOOR,
+  isPlaced,
+  MIN_FLOOR_SCALE,
+  readingOrder,
+  snapPosition,
+} from './station'
 
 describe('floor map positions', () => {
   it('treats the database default 0,0 as "not placed"', () => {
@@ -35,5 +46,54 @@ describe('floor map positions', () => {
 
   it('uses at least one column on a narrow board', () => {
     expect(defaultSlot(3, 200)).toEqual({ x: FLOOR.padding, y: FLOOR.padding + 3 * (FLOOR.cardHeight + FLOOR.gap) })
+  })
+})
+
+describe('live map layout helpers', () => {
+  it('reading order: rows top to bottom, right to left within a row', () => {
+    const positions = new Map([
+      ['a', { x: 40, y: 360 }],
+      ['b', { x: 880, y: 360 }],
+      ['c', { x: 312, y: 16 }],
+      ['d', { x: 600, y: 700 }],
+      ['e', { x: 500, y: 400 }], // 40px lower than a/b: still the same row
+    ])
+    const items = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id }))
+    expect(readingOrder(items, positions).map((i) => i.id)).toEqual(['c', 'b', 'e', 'a', 'd'])
+  })
+
+  it('fitScale shrinks only, in 1% steps, never below the legibility floor', () => {
+    expect(fitScale(1000, 1200)).toBe(1)
+    expect(fitScale(1176, 1000)).toBe(0.85)
+    expect(fitScale(5000, 1000)).toBe(MIN_FLOOR_SCALE)
+    expect(fitScale(1000, 0)).toBe(1)
+  })
+
+  it('board extent grows to contain every card', () => {
+    expect(boardExtent([{ x: 900, y: 700 }], 1000)).toEqual({
+      width: 900 + FLOOR.cardWidth + FLOOR.padding,
+      height: 700 + FLOOR.cardHeight + FLOOR.padding,
+    })
+    expect(boardExtent([], 1000)).toEqual({ width: 1000, height: 560 })
+  })
+
+  it('counts stations per status (shared by dashboard and map legend)', () => {
+    const base = { name: '', kind: 'ps5' as const, ratePlanId: 'p', sortOrder: 0, posX: 0, posY: 0 }
+    const list = [
+      { ...base, id: '1', enabled: true },
+      { ...base, id: '2', enabled: true },
+      { ...base, id: '3', enabled: false },
+    ]
+    const session = {
+      id: 's',
+      stationId: '1',
+      ratePlanName: '',
+      controllers: 1,
+      startedAt: 0,
+      rates: [],
+      segments: [{ startedAt: 0, endedAt: null, controllers: 1, hourlyRate: 1 }],
+      orders: [],
+    }
+    expect(countByStatus(list, { '1': session })).toEqual({ running: 1, paused: 0, available: 1, maintenance: 1 })
   })
 })

@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { DashboardStats } from '@/components/DashboardStats'
 import { StationCard } from '@/components/StationCard'
 import { SegmentedControl, type SegmentedOption } from '@/components/ui/SegmentedControl'
-import { getStationStatus } from '@/lib/station'
+import { countByStatus, getStationStatus } from '@/lib/station'
 import { useStationStore } from '@/store/stationStore'
 import { useUiStore, type StationFilter } from '@/store/uiStore'
 
@@ -13,12 +13,7 @@ export function Dashboard() {
   const setFilter = useUiStore((s) => s.setStationFilter)
 
   const { visible, options } = useMemo(() => {
-    const counts = { running: 0, paused: 0, available: 0 }
-    const withStatus = stations.map((station) => {
-      const status = getStationStatus(station, sessions[station.id])
-      if (status in counts) counts[status as keyof typeof counts] += 1
-      return { station, status }
-    })
+    const counts = countByStatus(stations, sessions)
 
     const options: SegmentedOption<StationFilter>[] = [
       { value: 'all', label: 'همه', count: stations.length },
@@ -28,9 +23,7 @@ export function Dashboard() {
     ]
 
     const visible =
-      filter === 'all'
-        ? stations
-        : withStatus.filter((entry) => entry.status === filter).map((entry) => entry.station)
+      filter === 'all' ? stations : stations.filter((s) => getStationStatus(s, sessions[s.id]) === filter)
 
     return { visible, options }
   }, [stations, sessions, filter])

@@ -11,7 +11,7 @@ import { formatToman } from '@/lib/currency'
 import { lowestRate, STATION_KIND_LABEL } from '@/lib/station'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStationStore } from '@/store/stationStore'
-import { toastError } from '@/store/uiStore'
+import { toastError, useUiStore } from '@/store/uiStore'
 import type { Station } from '@/types'
 
 type Editing = { mode: 'create' } | { mode: 'edit'; station: Station } | null
@@ -23,7 +23,8 @@ export function StationsPage() {
   const setStationEnabled = useSettingsStore((s) => s.setStationEnabled)
   const [editing, setEditing] = useState<Editing>(null)
   const [toggling, setToggling] = useState<string | null>(null)
-  const [editLayout, setEditLayout] = useState(false)
+  const editLayout = useUiStore((s) => s.layoutEditing)
+  const setEditLayout = useUiStore((s) => s.setLayoutEditing)
   const editLayoutId = useId()
 
   const toggle = async (station: Station, enabled: boolean) => {
@@ -63,7 +64,7 @@ export function StationsPage() {
       >
         {editLayout ? (
           <div className="p-3">
-            <FloorMap stations={stations} />
+            <FloorMap stations={stations} editable />
           </div>
         ) : (
           <table className="w-full text-[13px]">

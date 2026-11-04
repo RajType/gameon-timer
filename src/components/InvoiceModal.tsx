@@ -1,5 +1,5 @@
 import { LoaderCircle, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, errorMessage } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { formatNumber, formatSignedToman, formatToman, toPersianDigits } from '@/lib/currency'
@@ -49,6 +49,8 @@ function InvoiceDialog({ stationId, at }: CheckoutTarget) {
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // Synchronous guard: a double click can land before the disabled state renders.
+  const submittingRef = useRef(false)
 
   // The backend computes the preview with the same code that records the
   // invoice, so the operator sees exactly what will be stored.
@@ -76,7 +78,8 @@ function InvoiceDialog({ stationId, at }: CheckoutTarget) {
   }, [close, submitting])
 
   const confirm = useCallback(async () => {
-    if (!invoice) return
+    if (!invoice || submittingRef.current) return
+    submittingRef.current = true
     setSubmitting(true)
     try {
       const saved = await checkout(stationId, at, invoice.total)
@@ -93,6 +96,7 @@ function InvoiceDialog({ stationId, at }: CheckoutTarget) {
         reopen(stationId)
       } else {
         setError(errorMessage(e))
+        submittingRef.current = false
         setSubmitting(false)
       }
     }
