@@ -76,6 +76,15 @@ moved to `gameon:floor:archived:<hash>`. If the old data cannot be imported, the
 database is left untouched and the operator chooses to retry or continue — the
 original key is kept either way. Status is shown under **داده و پشتیبان**.
 
+### Floor map
+
+**ایستگاه‌ها → ویرایش چیدمان** shows the stations on a 2D board (`@dnd-kit/core`).
+Drag a card, or focus it and use Space / arrow keys / Space; the position is
+saved immediately (`update_station_position`). Coordinates are physical room
+positions in px from the board's top-left, so the board is not mirrored for
+RTL (the cards are). `0, 0` means "not placed yet": such stations are shown in a
+default right-to-left grid until moved.
+
 ### Backups
 
 - Automatic: once a day at startup (last 14 kept), before migrations, and
@@ -88,7 +97,7 @@ original key is kept either way. Status is shown under **داده و پشتیب�
 
 ```
 src/
-  components/           dashboard building blocks (StationCard, SessionMeter, InvoiceModal, …)
+  components/           dashboard building blocks (StationCard, SessionMeter, InvoiceModal, FloorMap, …)
     admin/              StationForm, RatePlanForm, ReceiptPreview
     ui/                 Button, Field, MoneyInput, Switch, Modal, Popover, Section, …
   pages/                Dashboard, StationsPage, RatesPage, SettingsPage, DataPage
@@ -110,7 +119,7 @@ e2e/                    WebDriver tests against the real app (tauri-driver)
 | --- | --- | --- |
 | Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation |
 | TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off |
-| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore |
+| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart |
 
 E2E needs `tauri-driver` (`cargo install tauri-driver --locked`), `WebKitWebDriver`
 (`webkit2gtk-driver` package) and a debug build with the embedded frontend:

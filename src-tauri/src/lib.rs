@@ -55,6 +55,7 @@ pub fn run() {
             commands::create_station,
             commands::update_station,
             commands::set_station_enabled,
+            commands::update_station_position,
             commands::create_rate_plan,
             commands::update_rate_plan,
             commands::get_settings,

@@ -65,6 +65,9 @@ export const api = {
   createStation: (input: StationInput) => call<Snapshot>('create_station', { input }),
   updateStation: (id: string, input: StationInput) => call<Snapshot>('update_station', { id, input }),
   setStationEnabled: (id: string, enabled: boolean) => call<Snapshot>('set_station_enabled', { id, enabled }),
+  /** Whole numbers only (Rust i32); see `snapPosition`. */
+  updateStationPosition: (id: string, x: number, y: number) =>
+    call<Floor>('update_station_position', { id, posX: x, posY: y }),
   createRatePlan: (input: RatePlanInput) => call<Snapshot>('create_rate_plan', { input }),
   updateRatePlan: (id: string, input: RatePlanInput) => call<Snapshot>('update_rate_plan', { id, input }),
   getSettings: () => call<Settings>('get_settings'),

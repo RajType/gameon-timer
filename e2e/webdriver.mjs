@@ -78,6 +78,21 @@ export class Driver {
     return this.req('GET', this.s(`/element/${id}/text`))
   }
 
+  /** Real pointer drag (W3C Actions): press on the element's centre, move in steps, release. */
+  async dragBy(id, dx, dy, steps = 8) {
+    const move = (x, y) => ({ type: 'pointerMove', duration: 40, origin: 'pointer', x, y })
+    const actions = [
+      { type: 'pointerMove', duration: 0, origin: { [ELEMENT]: id }, x: 0, y: 0 },
+      { type: 'pointerDown', button: 0 },
+      ...Array.from({ length: steps }, () => move(Math.round(dx / steps), Math.round(dy / steps))),
+      { type: 'pointerUp', button: 0 },
+    ]
+    await this.req('POST', this.s('/actions'), {
+      actions: [{ type: 'pointer', id: 'mouse', parameters: { pointerType: 'mouse' }, actions }],
+    })
+    await this.req('DELETE', this.s('/actions'))
+  }
+
   async screenshot() {
     return Buffer.from(await this.req('GET', this.s('/screenshot')), 'base64')
   }

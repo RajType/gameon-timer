@@ -88,6 +88,9 @@ pub struct Station {
     pub rate_plan_id: String,
     pub enabled: bool,
     pub sort_order: i64,
+    /// Floor-plan position (migration 0002); new and migrated stations start at 0, 0.
+    pub pos_x: i32,
+    pub pos_y: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
