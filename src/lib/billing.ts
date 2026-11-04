@@ -1,62 +1,102 @@
-import type { BuffetLine, Invoice, Session, Station } from '@/types'
-import { roundToThousand } from './currency'
-import { getPausedMs, getPlayedMs, HOUR_MS } from './time'
+import type { RoundingRule, Segment, Session } from '@/types'
 
-/** Time is prorated to the millisecond; only the final total is rounded. */
-export function calculateTimeCost(playedMs: number, hourlyRate: number): number {
-  return Math.round((Math.max(0, playedMs) / HOUR_MS) * hourlyRate)
+/*
+ * Live billing estimate for the dashboard. Mirrors `src-tauri/src/billing.rs`
+ * exactly; both are checked against `src-tauri/tests/fixtures/billing-cases.json`.
+ * The authoritative invoice is always computed by the backend at checkout.
+ *
+ *   1. Play time = Σ segment durations (pauses are the gaps).
+ *   2. Segments with the same (controllers, rate) merge into one line, priced
+ *      round_half_up(duration × rate / 1h) Toman.
+ *   3. Items = unit price × quantity.
+ *   4. Only the grand total is rounded, per the configured rule.
+ */
+
+export const HOUR_MS = 3_600_000
+const HALF_HOUR = BigInt(HOUR_MS / 2)
+const HOUR = BigInt(HOUR_MS)
+
+/** Integer-exact (BigInt) so long sessions at high rates never lose precision. */
+export function timeCost(durationMs: number, hourlyRate: number): number {
+  if (durationMs <= 0 || hourlyRate <= 0) return 0
+  return Number((BigInt(Math.trunc(durationMs)) * BigInt(Math.trunc(hourlyRate)) + HALF_HOUR) / HOUR)
 }
 
-export function calculateBuffetTotal(lines: readonly BuffetLine[]): number {
-  return lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0)
+export function applyRounding(amount: number, rule: RoundingRule): number {
+  const value = Math.max(0, amount)
+  const { unit } = rule
+  if (unit <= 1) return value
+  switch (rule.mode) {
+    case 'nearest':
+      return Math.floor((value * 2 + unit) / (2 * unit)) * unit
+    case 'up':
+      return Math.floor((value + unit - 1) / unit) * unit
+    case 'down':
+      return Math.floor(value / unit) * unit
+  }
 }
 
-export interface SessionCharges {
+export function segmentDuration(segment: Segment, at: number): number {
+  return Math.max(0, (segment.endedAt ?? at) - segment.startedAt)
+}
+
+export interface TimeLine {
+  controllers: number
+  hourlyRate: number
+  durationMs: number
+  amount: number
+}
+
+export function timeLines(segments: readonly Segment[], at: number): TimeLine[] {
+  const lines: TimeLine[] = []
+  for (const segment of segments) {
+    const duration = segmentDuration(segment, at)
+    const line = lines.find(
+      (l) => l.controllers === segment.controllers && l.hourlyRate === segment.hourlyRate,
+    )
+    if (line) line.durationMs += duration
+    else
+      lines.push({
+        controllers: segment.controllers,
+        hourlyRate: segment.hourlyRate,
+        durationMs: duration,
+        amount: 0,
+      })
+  }
+  return lines
+    .filter((l) => l.durationMs > 0)
+    .map((l) => ({ ...l, amount: timeCost(l.durationMs, l.hourlyRate) }))
+}
+
+export interface Charges {
   playedMs: number
-  timeCost: number
-  buffetTotal: number
+  pausedMs: number
+  timeLines: TimeLine[]
+  timeTotal: number
+  ordersTotal: number
   subtotal: number
-  /** Rounded to the nearest 1,000 Toman. */
+  rounding: number
+  /** Payable amount after rounding. */
   total: number
 }
 
-/** Live charges for an open session at `now`. */
-export function getSessionCharges(session: Session, now: number): SessionCharges {
-  const playedMs = getPlayedMs(session, now)
-  const timeCost = calculateTimeCost(playedMs, session.hourlyRate)
-  const buffetTotal = calculateBuffetTotal(session.buffet)
-  const subtotal = timeCost + buffetTotal
-  return { playedMs, timeCost, buffetTotal, subtotal, total: roundToThousand(subtotal) }
+export interface ChargeInput {
+  startedAt: number
+  segments: readonly Segment[]
+  orders: ReadonlyArray<{ unitPrice: number; quantity: number }>
 }
 
-export interface BuildInvoiceInput {
-  id: string
-  number: number
-  station: Pick<Station, 'id' | 'name'>
-  session: Session
-  /** Checkout moment. Billing is frozen here, even if confirmed later. */
-  endedAt: number
+export function computeCharges(input: ChargeInput, rule: RoundingRule, at: number): Charges {
+  const lines = timeLines(input.segments, at)
+  const playedMs = lines.reduce((sum, l) => sum + l.durationMs, 0)
+  const pausedMs = Math.max(0, Math.max(0, at - input.startedAt) - playedMs)
+  const timeTotal = lines.reduce((sum, l) => sum + l.amount, 0)
+  const ordersTotal = input.orders.reduce((sum, o) => sum + o.unitPrice * o.quantity, 0)
+  const subtotal = timeTotal + ordersTotal
+  const total = applyRounding(subtotal, rule)
+  return { playedMs, pausedMs, timeLines: lines, timeTotal, ordersTotal, subtotal, rounding: total - subtotal, total }
 }
 
-/** Pure: turns an open session into a closed invoice. */
-export function buildInvoice({ id, number, station, session, endedAt }: BuildInvoiceInput): Invoice {
-  const charges = getSessionCharges(session, endedAt)
-  return {
-    id,
-    number,
-    sessionId: session.id,
-    stationId: station.id,
-    stationName: station.name,
-    startedAt: session.startedAt,
-    endedAt,
-    playedMs: charges.playedMs,
-    pausedMs: getPausedMs(session, endedAt),
-    hourlyRate: session.hourlyRate,
-    timeCost: charges.timeCost,
-    buffet: session.buffet.map((line) => ({ ...line })),
-    buffetTotal: charges.buffetTotal,
-    subtotal: charges.subtotal,
-    rounding: charges.total - charges.subtotal,
-    total: charges.total,
-  }
+export function getSessionCharges(session: Session, rule: RoundingRule, now: number): Charges {
+  return computeCharges(session, rule, now)
 }

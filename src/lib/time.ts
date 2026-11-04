@@ -6,28 +6,33 @@ export const MINUTE_MS = 60 * SECOND_MS
 export const HOUR_MS = 60 * MINUTE_MS
 
 /*
- * Session timing model
- * --------------------
- *   played = (pausedAt ?? now) − startedAt − pausedMs
- *
- * Only timestamps are persisted, so a restart (or a crash) never loses or
- * double-counts time: the next render simply recomputes from the wall clock.
+ * Sessions are stored as segments with wall-clock timestamps, so elapsed time
+ * stays correct across restarts and crashes: every render recomputes it.
  */
 
+export function getOpenSegment(session: Session) {
+  return session.segments.find((s) => s.endedAt === null)
+}
+
 export function getSessionStatus(session: Session): SessionStatus {
-  return session.pausedAt === null ? 'running' : 'paused'
+  return getOpenSegment(session) ? 'running' : 'paused'
 }
 
-/** Total paused time, including a pause that is still in progress. */
-export function getPausedMs(session: Session, now: number): number {
-  const ongoing = session.pausedAt === null ? 0 : Math.max(0, now - session.pausedAt)
-  return session.pausedMs + ongoing
+/** Current hourly rate: the open segment's, else the agreed rate for the current count. */
+export function getCurrentRate(session: Session): number | undefined {
+  return (
+    getOpenSegment(session)?.hourlyRate ??
+    session.rates.find((r) => r.controllers === session.controllers)?.hourlyRate
+  )
 }
 
-/** Billable play time at `now`. Frozen while paused. */
-export function getPlayedMs(session: Session, now: number): number {
-  const end = session.pausedAt ?? now
-  return Math.max(0, end - session.startedAt - session.pausedMs)
+/** When the current pause began (end of the last segment), if paused. */
+export function getPausedSince(session: Session): number | undefined {
+  if (getOpenSegment(session)) return undefined
+  return session.segments.reduce<number | undefined>(
+    (latest, s) => (s.endedAt !== null && (latest === undefined || s.endedAt > latest) ? s.endedAt : latest),
+    undefined,
+  )
 }
 
 /** `3_909_000` → `"۰۱:۰۵:۰۹"`. Hours are not capped at 24. */
@@ -69,13 +74,18 @@ export function formatDate(timestamp: number): string {
   return `${get('weekday')} ${get('day')} ${get('month')} ${get('year')}`
 }
 
-/** True when both timestamps fall on the same local calendar day. */
-export function isSameLocalDay(a: number, b: number): boolean {
-  const da = new Date(a)
-  const db = new Date(b)
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  )
+/** `"۱۳ آبان ۱۴۰۵، ۲۱:۰۵"` */
+export function formatDateTime(timestamp: number): string {
+  const parts = dateFormat.formatToParts(timestamp)
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? ''
+  return `${get('day')} ${get('month')} ${get('year')}، ${formatClock(timestamp)}`
+}
+
+/** [start, end) of the local calendar day containing `timestamp`. */
+export function localDayRange(timestamp: number): [number, number] {
+  const d = new Date(timestamp)
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+  return [start, end]
 }

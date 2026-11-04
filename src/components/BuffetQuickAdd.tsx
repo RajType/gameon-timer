@@ -1,9 +1,9 @@
 import { Coffee, Minus, Plus } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { BUFFET_MENU } from '@/data/seed'
+import { useMemo } from 'react'
 import { formatNumber, formatToman } from '@/lib/currency'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useStationStore } from '@/store/stationStore'
-import { Button } from './ui/Button'
+import { Popover } from './ui/Popover'
 
 interface BuffetQuickAddProps {
   stationId: string
@@ -11,90 +11,73 @@ interface BuffetQuickAddProps {
 
 /** Compact popover for adding buffet items to a station's open tab. */
 export function BuffetQuickAdd({ stationId }: BuffetQuickAddProps) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
-  const lines = useStationStore((s) => s.sessions[stationId]?.buffet)
-  const addBuffetItem = useStationStore((s) => s.addBuffetItem)
-  const removeBuffetItem = useStationStore((s) => s.removeBuffetItem)
+  const orders = useStationStore((s) => s.sessions[stationId]?.orders)
+  const busy = useStationStore((s) => Boolean(s.pending[stationId]))
+  const addOrderItem = useStationStore((s) => s.addOrderItem)
+  const removeOrderItem = useStationStore((s) => s.removeOrderItem)
+  const allProducts = useSettingsStore((s) => s.products)
+  const products = useMemo(() => allProducts.filter((p) => p.active), [allProducts])
 
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+  const quantities = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const line of orders ?? []) {
+      if (line.productId) map.set(line.productId, (map.get(line.productId) ?? 0) + line.quantity)
     }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open])
-
-  const itemCount = lines?.reduce((sum, line) => sum + line.quantity, 0) ?? 0
+    return map
+  }, [orders])
+  const itemCount = orders?.reduce((sum, line) => sum + line.quantity, 0) ?? 0
 
   return (
-    <div ref={rootRef} className="relative">
-      <Button
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-label="افزودن از بوفه"
-        title="بوفه"
-        onClick={() => setOpen((value) => !value)}
-        className="relative"
-      >
-        <Coffee />
-        {itemCount > 0 && (
-          <span className="text-[11px] text-label-secondary tabular-nums">{formatNumber(itemCount)}</span>
-        )}
-      </Button>
-
-      {open && (
-        // Solid surface: the card already applies backdrop-filter, and nested
-        // backdrop filters can't sample neighbouring cards, so glass would leak.
-        <div className="absolute start-0 top-full z-30 mt-2 w-64 rounded-2xl border border-white/10 bg-surface-raised p-1.5 shadow-2xl shadow-black/60 motion-safe:animate-pop-in">
-          <p className="px-2.5 pt-1 pb-1.5 text-[11px] font-medium text-label-tertiary">بوفه</p>
-          <ul className="flex max-h-72 flex-col overflow-y-auto">
-            {BUFFET_MENU.map((item) => {
-              const quantity = lines?.find((line) => line.itemId === item.id)?.quantity ?? 0
-              return (
-                <li key={item.id} className="flex h-9 items-center gap-2 rounded-lg ps-2.5 pe-1 hover:bg-white/[0.06]">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{item.name}</span>
-                  <span className="text-xs text-gold tabular-nums">{formatToman(item.price)}</span>
-                  {/* Fixed width keeps the price column aligned as controls appear. */}
-                  <div className="flex w-[4.5rem] items-center justify-end">
-                    {quantity > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          aria-label={`کم کردن ${item.name}`}
-                          onClick={() => removeBuffetItem(stationId, item.id)}
-                          className="grid size-7 place-items-center rounded-md text-label-secondary hover:bg-white/[0.08] hover:text-label"
-                        >
-                          <Minus className="size-3.5" />
-                        </button>
-                        <span className="w-4 text-center text-xs font-semibold tabular-nums">
-                          {formatNumber(quantity)}
-                        </span>
-                      </>
-                    )}
+    <Popover
+      label="افزودن از بوفه"
+      title="بوفه"
+      width="w-64"
+      trigger={
+        <>
+          <Coffee />
+          {itemCount > 0 && (
+            <span className="text-[11px] text-label-secondary tabular-nums">{formatNumber(itemCount)}</span>
+          )}
+        </>
+      }
+    >
+      <ul className="flex max-h-72 flex-col overflow-y-auto">
+        {products.map((item) => {
+          const quantity = quantities.get(item.id) ?? 0
+          return (
+            <li key={item.id} className="flex h-9 items-center gap-2 rounded-lg ps-2.5 pe-1 hover:bg-white/[0.06]">
+              <span className="min-w-0 flex-1 truncate text-[13px]">{item.name}</span>
+              <span className="text-xs text-gold tabular-nums">{formatToman(item.price)}</span>
+              {/* Fixed width keeps the price column aligned as controls appear. */}
+              <div className="flex w-[4.5rem] items-center justify-end">
+                {quantity > 0 && (
+                  <>
                     <button
                       type="button"
-                      aria-label={`افزودن ${item.name}`}
-                      onClick={() => addBuffetItem(stationId, item)}
-                      className="grid size-7 place-items-center rounded-md text-label-secondary hover:bg-white/[0.08] hover:text-label"
+                      disabled={busy}
+                      aria-label={`کم کردن ${item.name}`}
+                      onClick={() => void removeOrderItem(stationId, item.id)}
+                      className="grid size-7 place-items-center rounded-md text-label-secondary hover:bg-white/[0.08] hover:text-label disabled:opacity-40"
                     >
-                      <Plus className="size-3.5" />
+                      <Minus className="size-3.5" />
                     </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
+                    <span className="w-4 text-center text-xs font-semibold tabular-nums">{formatNumber(quantity)}</span>
+                  </>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  aria-label={`افزودن ${item.name}`}
+                  onClick={() => void addOrderItem(stationId, item.id)}
+                  className="grid size-7 place-items-center rounded-md text-label-secondary hover:bg-white/[0.08] hover:text-label disabled:opacity-40"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </Popover>
   )
 }

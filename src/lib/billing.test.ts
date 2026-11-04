@@ -1,57 +1,49 @@
 import { describe, expect, it } from 'vitest'
-import type { Session } from '@/types'
-import { buildInvoice, calculateTimeCost, getSessionCharges } from './billing'
-import { HOUR_MS, MINUTE_MS } from './time'
+import cases from '../../src-tauri/tests/fixtures/billing-cases.json'
+import type { RoundingMode, Segment } from '@/types'
+import { applyRounding, computeCharges, timeCost } from './billing'
 
-const T0 = Date.UTC(2026, 10, 4, 18, 0, 0)
-
-const base: Session = {
-  id: 's1',
-  stationId: 'ps5-1',
-  startedAt: T0,
-  pausedAt: null,
-  pausedMs: 0,
-  hourlyRate: 150_000,
-  buffet: [],
+interface GoldenCase {
+  name: string
+  startedAt: number
+  at: number
+  segments: Segment[]
+  orders: { unitPrice: number; quantity: number }[]
+  rounding: { unit: number; mode: RoundingMode }
+  expected: {
+    playedMs: number
+    pausedMs: number
+    timeLines: { controllers: number; hourlyRate: number; durationMs: number; amount: number }[]
+    timeTotal: number
+    ordersTotal: number
+    subtotal: number
+    rounding: number
+    total: number
+  }
 }
 
-describe('calculateTimeCost', () => {
-  it('prorates the hourly rate', () => {
-    expect(calculateTimeCost(HOUR_MS, 150_000)).toBe(150_000)
-    expect(calculateTimeCost(20 * MINUTE_MS, 150_000)).toBe(50_000)
-    expect(calculateTimeCost(7 * MINUTE_MS, 100_000)).toBe(11_667)
+describe('golden cases shared with Rust (src-tauri/src/billing.rs)', () => {
+  it.each((cases as GoldenCase[]).map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    const charges = computeCharges({ startedAt: c.startedAt, segments: c.segments, orders: c.orders }, c.rounding, c.at)
+    expect(charges).toEqual(c.expected)
   })
 })
 
-describe('getSessionCharges', () => {
-  it('adds buffet lines and rounds only the total', () => {
-    const s: Session = {
-      ...base,
-      hourlyRate: 100_000,
-      buffet: [{ itemId: 'soda', name: 'نوشابه', unitPrice: 25_000, quantity: 2 }],
-    }
-    const c = getSessionCharges(s, T0 + 7 * MINUTE_MS)
-    expect(c.timeCost).toBe(11_667)
-    expect(c.buffetTotal).toBe(50_000)
-    expect(c.subtotal).toBe(61_667)
-    expect(c.total).toBe(62_000)
+describe('timeCost', () => {
+  it('rounds half Toman up and stays exact for very long sessions', () => {
+    expect(timeCost(12, 150_000)).toBe(1) // 0.5 → 1
+    expect(timeCost(11, 150_000)).toBe(0)
+    // 30 days at 100,000,000/h: beyond 2^53 intermediate, still exact.
+    expect(timeCost(30 * 24 * 3_600_000, 100_000_000)).toBe(72_000_000_000)
   })
 })
 
-describe('buildInvoice', () => {
-  it('freezes billing at the checkout moment and records the rounding delta', () => {
-    const s: Session = { ...base, pausedMs: 10 * MINUTE_MS }
-    const invoice = buildInvoice({
-      id: 'inv-1',
-      number: 1,
-      station: { id: 'ps5-1', name: 'PS5 · ۱' },
-      session: s,
-      endedAt: T0 + 70 * MINUTE_MS + 30_000,
-    })
-    expect(invoice.playedMs).toBe(60 * MINUTE_MS + 30_000)
-    expect(invoice.pausedMs).toBe(10 * MINUTE_MS)
-    expect(invoice.timeCost).toBe(151_250)
-    expect(invoice.total).toBe(151_000)
-    expect(invoice.rounding).toBe(-250)
+describe('applyRounding', () => {
+  it('supports nearest / up / down and "no rounding"', () => {
+    expect(applyRounding(16_500, { unit: 1000, mode: 'nearest' })).toBe(17_000)
+    expect(applyRounding(16_499, { unit: 1000, mode: 'nearest' })).toBe(16_000)
+    expect(applyRounding(16_001, { unit: 5000, mode: 'up' })).toBe(20_000)
+    expect(applyRounding(19_999, { unit: 5000, mode: 'down' })).toBe(15_000)
+    expect(applyRounding(16_499, { unit: 0, mode: 'nearest' })).toBe(16_499)
   })
 })

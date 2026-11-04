@@ -1,28 +1,41 @@
-import type { BuffetLine } from './buffet'
+import type { RoundingMode } from './settings'
 
-/** An immutable, closed bill. All amounts are in Toman. */
+export interface InvoiceLine {
+  kind: 'time' | 'item'
+  label: string
+  productId: string | null
+  controllers: number | null
+  durationMs: number | null
+  /** Hourly rate for time lines; unit price for items. */
+  unitPrice: number
+  quantity: number
+  amount: number
+}
+
+/** An immutable, closed bill. All amounts are integer Toman. */
 export interface Invoice {
   id: string
-  /** Human-facing sequential number. */
   number: number
   sessionId: string
   stationId: string
   stationName: string
-
+  stationKind: string
   startedAt: number
   endedAt: number
-  /** Billable play time (excludes pauses). */
   playedMs: number
   pausedMs: number
-  hourlyRate: number
-
-  timeCost: number
-  buffet: BuffetLine[]
-  buffetTotal: number
-  /** timeCost + buffetTotal, before rounding. */
+  timeTotal: number
+  ordersTotal: number
+  /** timeTotal + ordersTotal */
   subtotal: number
-  /** total − subtotal (may be negative). */
+  roundingUnit: number
+  roundingMode: RoundingMode
+  /** total − subtotal */
   rounding: number
-  /** Payable amount, rounded to the nearest 1,000 Toman. */
   total: number
+  storeName: string
+  receiptHeader: string
+  receiptFooter: string
+  source: 'app' | 'legacy'
+  lines: InvoiceLine[]
 }

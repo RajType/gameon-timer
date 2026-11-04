@@ -2,8 +2,9 @@ import type { ReactNode } from 'react'
 import { useNow } from '@/hooks/useNow'
 import { getSessionCharges } from '@/lib/billing'
 import { cn } from '@/lib/cn'
-import { formatToman, formatTotal } from '@/lib/currency'
-import { formatClock, formatDuration } from '@/lib/time'
+import { formatToman } from '@/lib/currency'
+import { formatClock, formatDuration, getSessionStatus } from '@/lib/time'
+import { useRoundingRule } from '@/store/settingsStore'
 import type { Session } from '@/types'
 
 interface MeterViewProps {
@@ -63,15 +64,16 @@ export function MeterView({ duration, startedAt, buffet, total, tone, aside }: M
 /** Live meter for an open session. The only part of a card that ticks. */
 export function SessionMeter({ session, aside }: { session: Session; aside?: ReactNode }) {
   const now = useNow()
-  const { playedMs, buffetTotal, total } = getSessionCharges(session, now)
+  const rule = useRoundingRule()
+  const { playedMs, ordersTotal, total } = getSessionCharges(session, rule, now)
 
   return (
     <MeterView
       duration={formatDuration(playedMs)}
       startedAt={formatClock(session.startedAt)}
-      buffet={buffetTotal > 0 ? formatToman(buffetTotal) : '—'}
-      total={formatTotal(total)}
-      tone={session.pausedAt === null ? 'running' : 'paused'}
+      buffet={ordersTotal > 0 ? formatToman(ordersTotal) : '—'}
+      total={formatToman(total)}
+      tone={getSessionStatus(session)}
       aside={aside}
     />
   )

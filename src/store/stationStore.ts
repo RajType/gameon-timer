@@ -1,149 +1,101 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
-import { DEFAULT_STATIONS } from '@/data/seed'
-import { buildInvoice } from '@/lib/billing'
-import type { BuffetItem, Invoice, Session, Station } from '@/types'
+import { api } from '@/lib/api'
+import { localDayRange } from '@/lib/time'
+import type { DaySummary, Floor, Invoice, Session, Station } from '@/types'
+import { toastError } from './uiStore'
 
 interface StationState {
   stations: Station[]
-  /** Open sessions keyed by station id — guarantees one session per station. */
+  /** Open sessions keyed by station id. */
   sessions: Record<string, Session>
-  /** Closed invoices, oldest first. */
-  invoices: Invoice[]
-  nextInvoiceNumber: number
+  daySummary: DaySummary
+  /** Start of the local day `daySummary` covers. */
+  summaryDay: number
+  /** Stations with a command in flight (buttons disabled meanwhile). */
+  pending: Record<string, true>
 }
 
 interface StationActions {
-  startSession: (stationId: string) => void
-  pauseSession: (stationId: string) => void
-  resumeSession: (stationId: string) => void
-  addBuffetItem: (stationId: string, item: BuffetItem) => void
-  /** Decrements the quantity by one; drops the line at zero. */
-  removeBuffetItem: (stationId: string, itemId: string) => void
-  /** Closes the session at `endedAt` and records its invoice. */
-  checkout: (stationId: string, endedAt: number) => Invoice | null
+  setFloor: (floor: Floor) => void
+  refreshSummary: (now?: number) => Promise<void>
+  startSession: (stationId: string, controllers?: number) => Promise<void>
+  pauseSession: (stationId: string) => Promise<void>
+  resumeSession: (stationId: string) => Promise<void>
+  setControllers: (stationId: string, controllers: number) => Promise<void>
+  addOrderItem: (stationId: string, productId: string) => Promise<void>
+  removeOrderItem: (stationId: string, productId: string) => Promise<void>
+  /** Throws on failure so the checkout dialog can react (e.g. stale total). */
+  checkout: (stationId: string, at: number, expectedTotal: number) => Promise<Invoice>
 }
 
 export type StationStore = StationState & StationActions
 
-/** Return a copy of `sessions` with one entry replaced or removed. */
-function withSession(
-  sessions: Record<string, Session>,
-  stationId: string,
-  next: Session | null,
-): Record<string, Session> {
-  const copy = { ...sessions }
-  if (next) copy[stationId] = next
-  else delete copy[stationId]
-  return copy
+function bySession(sessions: Session[]): Record<string, Session> {
+  return Object.fromEntries(sessions.map((s) => [s.stationId, s]))
 }
 
-export const useStationStore = create<StationStore>()(
-  persist(
-    (set, get) => ({
-      stations: DEFAULT_STATIONS,
-      sessions: {},
-      invoices: [],
-      nextInvoiceNumber: 1,
+/**
+ * Floor state mirrored from SQLite. Every mutation goes through a backend
+ * command that runs in one transaction and returns the fresh floor.
+ */
+export const useStationStore = create<StationStore>()((set, get) => {
+  async function mutate(stationId: string, title: string, run: (session: Session | undefined) => Promise<Floor>) {
+    if (get().pending[stationId]) return
+    set((s) => ({ pending: { ...s.pending, [stationId]: true } }))
+    try {
+      get().setFloor(await run(get().sessions[stationId]))
+    } catch (error) {
+      toastError(title, error)
+    } finally {
+      set((s) => {
+        const pending = { ...s.pending }
+        delete pending[stationId]
+        return { pending }
+      })
+    }
+  }
 
-      startSession: (stationId) => {
-        const { stations, sessions } = get()
-        const station = stations.find((s) => s.id === stationId)
-        if (!station || station.outOfService || sessions[stationId]) return
+  function sessionId(session: Session | undefined): string {
+    if (!session) throw new Error('این ایستگاه جلسه‌ی باز ندارد.')
+    return session.id
+  }
 
-        const session: Session = {
-          id: crypto.randomUUID(),
-          stationId,
-          startedAt: Date.now(),
-          pausedAt: null,
-          pausedMs: 0,
-          hourlyRate: station.hourlyRate,
-          buffet: [],
-        }
-        set({ sessions: withSession(sessions, stationId, session) })
-      },
+  return {
+    stations: [],
+    sessions: {},
+    daySummary: { invoiceCount: 0, revenue: 0 },
+    summaryDay: 0,
+    pending: {},
 
-      pauseSession: (stationId) => {
-        const { sessions } = get()
-        const session = sessions[stationId]
-        if (!session || session.pausedAt !== null) return
-        set({ sessions: withSession(sessions, stationId, { ...session, pausedAt: Date.now() }) })
-      },
+    setFloor: (floor) => set({ stations: floor.stations, sessions: bySession(floor.sessions) }),
 
-      resumeSession: (stationId) => {
-        const { sessions } = get()
-        const session = sessions[stationId]
-        if (!session || session.pausedAt === null) return
-        const pausedFor = Math.max(0, Date.now() - session.pausedAt)
-        set({
-          sessions: withSession(sessions, stationId, {
-            ...session,
-            pausedAt: null,
-            pausedMs: session.pausedMs + pausedFor,
-          }),
-        })
-      },
-
-      addBuffetItem: (stationId, item) => {
-        const { sessions } = get()
-        const session = sessions[stationId]
-        if (!session) return
-
-        const exists = session.buffet.some((line) => line.itemId === item.id)
-        const buffet = exists
-          ? session.buffet.map((line) =>
-              line.itemId === item.id ? { ...line, quantity: line.quantity + 1 } : line,
-            )
-          : [...session.buffet, { itemId: item.id, name: item.name, unitPrice: item.price, quantity: 1 }]
-
-        set({ sessions: withSession(sessions, stationId, { ...session, buffet }) })
-      },
-
-      removeBuffetItem: (stationId, itemId) => {
-        const { sessions } = get()
-        const session = sessions[stationId]
-        if (!session) return
-
-        const buffet = session.buffet
-          .map((line) => (line.itemId === itemId ? { ...line, quantity: line.quantity - 1 } : line))
-          .filter((line) => line.quantity > 0)
-
-        set({ sessions: withSession(sessions, stationId, { ...session, buffet }) })
-      },
-
-      checkout: (stationId, endedAt) => {
-        const { stations, sessions, invoices, nextInvoiceNumber } = get()
-        const station = stations.find((s) => s.id === stationId)
-        const session = sessions[stationId]
-        if (!station || !session) return null
-
-        const invoice = buildInvoice({
-          id: crypto.randomUUID(),
-          number: nextInvoiceNumber,
-          station,
-          session,
-          endedAt,
-        })
-        set({
-          sessions: withSession(sessions, stationId, null),
-          invoices: [...invoices, invoice],
-          nextInvoiceNumber: nextInvoiceNumber + 1,
-        })
-        return invoice
-      },
-    }),
-    {
-      // Tauri's WebView keeps localStorage in the app data directory, so open
-      // sessions survive restarts. Planned: move invoices to SQLite.
-      name: 'gameon:floor',
-      version: 1,
-      storage: createJSONStorage(() => localStorage),
-      partialize: ({ stations, sessions, invoices, nextInvoiceNumber }) => ({
-        stations,
-        sessions,
-        invoices,
-        nextInvoiceNumber,
-      }),
+    refreshSummary: async (now = Date.now()) => {
+      const [from, to] = localDayRange(now)
+      try {
+        set({ daySummary: await api.daySummary(from, to), summaryDay: from })
+      } catch (error) {
+        toastError('خلاصه‌ی امروز بارگذاری نشد', error)
+      }
     },
-  ),
-)
+
+    startSession: (stationId, controllers) =>
+      mutate(stationId, 'شروع جلسه ناموفق بود', () => api.startSession(stationId, controllers)),
+    pauseSession: (stationId) =>
+      mutate(stationId, 'مکث ناموفق بود', (s) => api.pauseSession(sessionId(s))),
+    resumeSession: (stationId) =>
+      mutate(stationId, 'ادامه‌ی جلسه ناموفق بود', (s) => api.resumeSession(sessionId(s))),
+    setControllers: (stationId, controllers) =>
+      mutate(stationId, 'تغییر تعداد دسته ناموفق بود', (s) => api.setSessionControllers(sessionId(s), controllers)),
+    addOrderItem: (stationId, productId) =>
+      mutate(stationId, 'افزودن به سفارش ناموفق بود', (s) => api.addOrderItem(sessionId(s), productId)),
+    removeOrderItem: (stationId, productId) =>
+      mutate(stationId, 'حذف از سفارش ناموفق بود', (s) => api.removeOrderItem(sessionId(s), productId)),
+
+    checkout: async (stationId, at, expectedTotal) => {
+      const result = await api.checkout(sessionId(get().sessions[stationId]), at, expectedTotal)
+      get().setFloor(result.floor)
+      void get().refreshSummary()
+      return result.invoice
+    },
+  }
+})

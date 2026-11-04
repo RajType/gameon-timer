@@ -1,30 +1,36 @@
 import { describe, expect, it } from 'vitest'
-import { formatToman, formatTotal, roundToThousand, toPersianDigits } from './currency'
-
-describe('roundToThousand', () => {
-  it('rounds to the nearest 1,000', () => {
-    expect(roundToThousand(16_499)).toBe(16_000)
-    expect(roundToThousand(16_500)).toBe(17_000)
-    expect(roundToThousand(16_501)).toBe(17_000)
-    expect(roundToThousand(120_000)).toBe(120_000)
-  })
-
-  it('never yields negative zero', () => {
-    expect(Object.is(roundToThousand(-1), 0)).toBe(true)
-    expect(Object.is(roundToThousand(0), 0)).toBe(true)
-  })
-})
+import { formatSignedToman, formatToman, parseAmountInput, toAsciiDigits, toPersianDigits } from './currency'
 
 describe('formatting', () => {
   it('uses Persian digits and the Toman label', () => {
     expect(formatToman(1_250_000)).toBe('۱٬۲۵۰٬۰۰۰ تومان')
+    expect(formatToman(-0)).toBe('۰ تومان')
   })
 
-  it('formatTotal rounds before formatting', () => {
-    expect(formatTotal(16_750)).toBe('۱۷٬۰۰۰ تومان')
+  it('signs adjustments', () => {
+    expect(formatSignedToman(500)).toContain('+۵۰۰')
+    expect(formatSignedToman(-500)).toContain('۵۰۰')
+    expect(formatSignedToman(0)).toBe('۰ تومان')
   })
 
-  it('converts ASCII digits only', () => {
+  it('converts digits both ways', () => {
     expect(toPersianDigits('PS5 · 12:05')).toBe('PS۵ · ۱۲:۰۵')
+    expect(toAsciiDigits('۱۲۳٤٥')).toBe('12345')
+  })
+})
+
+describe('parseAmountInput', () => {
+  it('accepts Persian/Arabic/Latin digits with any separator', () => {
+    expect(parseAmountInput('۱۵۰٬۰۰۰')).toBe(150_000)
+    expect(parseAmountInput('150,000')).toBe(150_000)
+    expect(parseAmountInput(' ١٢٠ ٠٠٠ ')).toBe(120_000)
+    expect(parseAmountInput('0')).toBe(0)
+  })
+
+  it('rejects anything that is not a whole non-negative number', () => {
+    expect(parseAmountInput('')).toBeNull()
+    expect(parseAmountInput('-5')).toBeNull()
+    expect(parseAmountInput('12a')).toBeNull()
+    expect(parseAmountInput('99999999999999999999')).toBeNull()
   })
 })

@@ -1,42 +1,61 @@
 import {
   ChartColumn,
   Coffee,
+  DatabaseBackup,
   Gamepad2,
   LayoutGrid,
+  Map as MapIcon,
   ReceiptText,
   Settings,
+  Tags,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { toPersianDigits } from '@/lib/currency'
+import { useUiStore, type View } from '@/store/uiStore'
 
 interface NavItem {
   key: string
   label: string
   icon: LucideIcon
-  /** Sections not built yet render disabled. */
-  ready?: boolean
+  /** Views that exist; others render disabled ("soon"). */
+  view?: View
 }
 
-const PRIMARY_NAV: NavItem[] = [
-  { key: 'dashboard', label: 'داشبورد', icon: LayoutGrid, ready: true },
-  { key: 'stations', label: 'ایستگاه‌ها', icon: Gamepad2 },
-  { key: 'buffet', label: 'بوفه', icon: Coffee },
-  { key: 'invoices', label: 'فاکتورها', icon: ReceiptText },
-  { key: 'reports', label: 'گزارش‌ها', icon: ChartColumn },
+const SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'عملیات',
+    items: [
+      { key: 'dashboard', label: 'داشبورد', icon: LayoutGrid, view: 'dashboard' },
+      { key: 'floor', label: 'نقشه‌ی سالن', icon: MapIcon },
+      { key: 'buffet', label: 'بوفه', icon: Coffee },
+      { key: 'invoices', label: 'فاکتورها', icon: ReceiptText },
+      { key: 'reports', label: 'گزارش‌ها', icon: ChartColumn },
+    ],
+  },
+  {
+    title: 'مدیریت',
+    items: [
+      { key: 'stations', label: 'ایستگاه‌ها', icon: Gamepad2, view: 'stations' },
+      { key: 'rates', label: 'نرخ‌ها و دسته‌ها', icon: Tags, view: 'rates' },
+      { key: 'settings', label: 'تنظیمات', icon: Settings, view: 'settings' },
+      { key: 'data', label: 'داده و پشتیبان', icon: DatabaseBackup, view: 'data' },
+    ],
+  },
 ]
 
-const ACTIVE_KEY = 'dashboard'
-
 function NavButton({ item }: { item: NavItem }) {
-  const active = item.key === ACTIVE_KEY
+  const current = useUiStore((s) => s.view)
+  const setView = useUiStore((s) => s.setView)
+  const active = item.view !== undefined && item.view === current
   const Icon = item.icon
   return (
     <button
       type="button"
-      disabled={!item.ready}
+      disabled={!item.view}
       aria-current={active ? 'page' : undefined}
-      title={item.ready ? undefined : 'به‌زودی'}
+      title={item.view ? undefined : 'به‌زودی'}
+      onClick={() => item.view && setView(item.view)}
       className={cn(
         'flex h-9 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-[13px] font-medium transition-colors',
         active ? 'bg-white/[0.09] text-label' : 'text-label-secondary hover:bg-white/[0.05] hover:text-label',
@@ -45,7 +64,7 @@ function NavButton({ item }: { item: NavItem }) {
     >
       <Icon className={cn('size-[18px]', active && 'text-gold')} strokeWidth={1.8} />
       <span>{item.label}</span>
-      {!item.ready && <span className="ms-auto text-[10px] text-label-tertiary">به‌زودی</span>}
+      {!item.view && <span className="ms-auto text-[10px] text-label-tertiary">به‌زودی</span>}
     </button>
   )
 }
@@ -63,20 +82,21 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav aria-label="منوی اصلی" className="flex flex-1 flex-col gap-0.5 px-3 pt-2">
-        <p className="px-2.5 pb-1.5 text-[11px] font-medium text-label-tertiary">منو</p>
-        {PRIMARY_NAV.map((item) => (
-          <NavButton key={item.key} item={item} />
+      <nav aria-label="منوی اصلی" className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 pt-2">
+        {SECTIONS.map((section) => (
+          <div key={section.title} className="flex flex-col gap-0.5">
+            <p className="px-2.5 pb-1.5 text-[11px] font-medium text-label-tertiary">{section.title}</p>
+            {section.items.map((item) => (
+              <NavButton key={item.key} item={item} />
+            ))}
+          </div>
         ))}
       </nav>
 
-      <div className="flex flex-col gap-3 border-t border-separator p-3">
-        <NavButton item={{ key: 'settings', label: 'تنظیمات', icon: Settings }} />
-        <div className="flex items-center gap-2 px-2.5 text-[11px] text-label-tertiary">
-          <span aria-hidden className="size-1.5 rounded-full bg-status-running" />
-          <span>ذخیره‌سازی خودکار فعال</span>
-          <span className="ms-auto tabular-nums">نسخه {toPersianDigits('0.1.0')}</span>
-        </div>
+      <div className="flex items-center gap-2 border-t border-separator px-5 py-3 text-[11px] text-label-tertiary">
+        <span aria-hidden className="size-1.5 rounded-full bg-status-running" />
+        <span>ذخیره در پایگاه داده‌ی محلی</span>
+        <span className="ms-auto tabular-nums">نسخه {toPersianDigits('0.2.0')}</span>
       </div>
     </aside>
   )
