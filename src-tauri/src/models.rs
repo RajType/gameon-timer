@@ -118,6 +118,8 @@ pub struct Product {
     pub price: i64,
     pub active: bool,
     pub sort_order: i64,
+    /// Units on hand; `None` = not counted (always available).
+    pub stock_quantity: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -274,3 +276,14 @@ pub struct RatePlanInput {
 }
 
 pub type SettingsInput = Settings;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductInput {
+    pub name: String,
+    pub category: String,
+    pub price: i64,
+    pub active: bool,
+    /// `None` = do not count stock for this item.
+    pub stock_quantity: Option<i64>,
+}

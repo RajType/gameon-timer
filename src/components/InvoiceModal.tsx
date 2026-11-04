@@ -165,7 +165,8 @@ function InvoiceDialog({ stationId, at }: CheckoutTarget) {
                 ) : (
                   <Row
                     key={`i${index}`}
-                    label={`${line.label} × ${formatNumber(line.quantity)}`}
+                    label={line.label}
+                    detail={`${formatNumber(line.quantity)} × ${formatToman(line.unitPrice)}`}
                     value={formatToman(line.amount)}
                   />
                 ),

@@ -7,6 +7,7 @@ import { Toaster } from '@/components/Toaster'
 import { useSessionAlerts } from '@/hooks/useSessionAlerts'
 import { unlockAudio } from '@/lib/sound'
 import { Dashboard } from '@/pages/Dashboard'
+import { BuffetPage } from '@/pages/BuffetPage'
 import { DataPage } from '@/pages/DataPage'
 import { FloorPage } from '@/pages/FloorPage'
 import { RatesPage } from '@/pages/RatesPage'
@@ -18,6 +19,7 @@ import { useUiStore, type View } from '@/store/uiStore'
 const VIEWS: Record<View, { title: string; render: () => ReactNode }> = {
   dashboard: { title: 'داشبورد', render: () => <Dashboard /> },
   floor: { title: 'نقشه‌ی سالن', render: () => <FloorPage /> },
+  buffet: { title: 'بوفه', render: () => <BuffetPage /> },
   stations: { title: 'ایستگاه‌ها', render: () => <StationsPage /> },
   rates: { title: 'نرخ‌ها و دسته‌ها', render: () => <RatesPage /> },
   settings: { title: 'تنظیمات', render: () => <SettingsPage /> },

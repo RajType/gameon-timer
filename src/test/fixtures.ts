@@ -30,7 +30,13 @@ export const ratePlans: RatePlan[] = [
   },
 ]
 
-export const products: Product[] = [{ id: 'soda', name: 'نوشابه', category: 'drink', price: 25_000, active: true, sortOrder: 0 }]
+/** Counted with stock, not counted, sold out, inactive. */
+export const products: Product[] = [
+  { id: 'soda', name: 'نوشابه', category: 'drink', price: 25_000, active: true, sortOrder: 0, stockQuantity: 3 },
+  { id: 'coffee', name: 'قهوه', category: 'drink', price: 45_000, active: true, sortOrder: 1, stockQuantity: null },
+  { id: 'cake', name: 'کیک', category: 'snack', price: 20_000, active: true, sortOrder: 2, stockQuantity: 0 },
+  { id: 'old', name: 'کالای قدیمی', category: 'food', price: 10_000, active: false, sortOrder: 3, stockQuantity: null },
+]
 
 const station = (n: number, posX: number, posY: number, enabled = true): Station => ({
   id: `station-${n}`,

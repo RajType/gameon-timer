@@ -4,7 +4,7 @@
 use rusqlite::{Connection, params};
 
 use crate::error::{AppResult, conflict, not_found, validation};
-use crate::models::{RatePlanInput, RateTier, SettingsInput, StationInput};
+use crate::models::{ProductInput, RatePlanInput, RateTier, SettingsInput, StationInput};
 use crate::repo::{load_station, new_id};
 
 pub const MAX_NAME_CHARS: usize = 40;
@@ -12,6 +12,9 @@ pub const MAX_CONTROLLERS: i64 = 8;
 pub const MAX_HOURLY_RATE: i64 = 100_000_000;
 pub const ROUNDING_UNITS: [i64; 6] = [0, 100, 500, 1_000, 5_000, 10_000];
 pub const SOUND_PRESETS: [&str; 3] = ["chime", "bell", "beep"];
+pub const PRODUCT_CATEGORIES: [&str; 3] = ["drink", "snack", "food"];
+pub const MAX_PRODUCT_PRICE: i64 = 100_000_000;
+pub const MAX_STOCK: i64 = 1_000_000;
 
 fn clean_name(raw: &str, what: &str) -> AppResult<String> {
     let name = raw.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -180,6 +183,60 @@ pub fn update_rate_plan(conn: &Connection, id: &str, input: &RatePlanInput, now:
         return Err(not_found("نرخ پیدا نشد."));
     }
     write_tiers(conn, id, &tiers)
+}
+
+// ---- buffet items ----------------------------------------------------------------
+
+fn validate_product(conn: &Connection, input: &ProductInput, current_id: Option<&str>) -> AppResult<String> {
+    let name = clean_name(&input.name, "نام کالا")?;
+    let taken: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM products WHERE name = ?1 AND id IS NOT ?2)",
+        params![name, current_id],
+        |r| r.get(0),
+    )?;
+    if taken {
+        return Err(validation("کالایی با این نام وجود دارد."));
+    }
+    if !PRODUCT_CATEGORIES.contains(&input.category.as_str()) {
+        return Err(validation("دسته‌ی کالا نامعتبر است."));
+    }
+    if !(0..=MAX_PRODUCT_PRICE).contains(&input.price) {
+        return Err(validation("قیمت نامعتبر است."));
+    }
+    if let Some(stock) = input.stock_quantity
+        && !(0..=MAX_STOCK).contains(&stock)
+    {
+        return Err(validation("موجودی نمی‌تواند منفی باشد."));
+    }
+    Ok(name)
+}
+
+pub fn create_product(conn: &Connection, input: &ProductInput, now: i64) -> AppResult<String> {
+    let name = validate_product(conn, input, None)?;
+    let sort_order: i64 =
+        conn.query_row("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM products", [], |r| r.get(0))?;
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO products (id, name, category, price, active, sort_order, stock_quantity, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+        params![id, name, input.category, input.price, input.active, sort_order, input.stock_quantity, now],
+    )?;
+    Ok(id)
+}
+
+/// Price changes affect new orders only (lines snapshot their price). The stock
+/// value is a count of what is on hand now (stocktake), `None` stops counting.
+pub fn update_product(conn: &Connection, id: &str, input: &ProductInput, now: i64) -> AppResult<()> {
+    let name = validate_product(conn, input, Some(id))?;
+    let updated = conn.execute(
+        "UPDATE products SET name = ?2, category = ?3, price = ?4, active = ?5, stock_quantity = ?6, updated_at = ?7
+         WHERE id = ?1",
+        params![id, name, input.category, input.price, input.active, input.stock_quantity, now],
+    )?;
+    if updated == 0 {
+        return Err(not_found("کالا پیدا نشد."));
+    }
+    Ok(())
 }
 
 fn validate_text(raw: &str, max: usize, what: &str) -> AppResult<String> {

@@ -9,6 +9,17 @@ export interface Product {
   price: number
   active: boolean
   sortOrder: number
+  /** Units on hand; `null` = not counted (always available). Never negative. */
+  stockQuantity: number | null
+}
+
+export interface ProductInput {
+  name: string
+  category: ProductCategory
+  price: number
+  active: boolean
+  /** `null` = do not count stock for this item. */
+  stockQuantity: number | null
 }
 
 /**

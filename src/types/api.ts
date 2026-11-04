@@ -52,6 +52,12 @@ export interface Bootstrap {
   legacy: LegacyOutcome
 }
 
+/** Order commands also return the buffet items, so stock stays fresh everywhere. */
+export interface OrderResult {
+  floor: Floor
+  products: Product[]
+}
+
 export interface CheckoutResult {
   invoice: Invoice
   floor: Floor

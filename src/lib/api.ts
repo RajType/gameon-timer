@@ -7,6 +7,9 @@ import type {
   DaySummary,
   Floor,
   Invoice,
+  OrderResult,
+  Product,
+  ProductInput,
   RatePlanInput,
   RestoreResult,
   Settings,
@@ -53,15 +56,21 @@ export const api = {
   resumeSession: (sessionId: string) => call<Floor>('resume_session', { sessionId }),
   setSessionControllers: (sessionId: string, controllers: number) =>
     call<Floor>('set_session_controllers', { sessionId, controllers }),
-  addOrderItem: (sessionId: string, productId: string) => call<Floor>('add_order_item', { sessionId, productId }),
+  /** Record a buffet order on an active session; stock-checked in the same transaction. */
+  addOrderItem: (sessionId: string, productId: string, quantity = 1) =>
+    call<OrderResult>('add_order_item', { sessionId, productId, quantity }),
   removeOrderItem: (sessionId: string, productId: string) =>
-    call<Floor>('remove_order_item', { sessionId, productId }),
+    call<OrderResult>('remove_order_item', { sessionId, productId }),
   previewCheckout: (sessionId: string, at: number) => call<Invoice>('preview_checkout', { sessionId, at }),
   checkout: (sessionId: string, at: number, expectedTotal: number) =>
     call<CheckoutResult>('checkout', { sessionId, at, expectedTotal }),
   daySummary: (from: number, to: number) => call<DaySummary>('day_summary', { from, to }),
 
   getCatalog: () => call<Catalog>('get_catalog'),
+  /** `availableOnly`: active and in stock (or not counted). */
+  listBuffetItems: (availableOnly = false) => call<Product[]>('list_buffet_items', { availableOnly }),
+  createProduct: (input: ProductInput) => call<Product[]>('create_product', { input }),
+  updateProduct: (id: string, input: ProductInput) => call<Product[]>('update_product', { id, input }),
   createStation: (input: StationInput) => call<Snapshot>('create_station', { input }),
   updateStation: (id: string, input: StationInput) => call<Snapshot>('update_station', { id, input }),
   setStationEnabled: (id: string, enabled: boolean) => call<Snapshot>('set_station_enabled', { id, enabled }),

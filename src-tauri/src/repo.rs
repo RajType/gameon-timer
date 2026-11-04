@@ -126,9 +126,20 @@ pub fn load_catalog(conn: &Connection) -> AppResult<Catalog> {
         })
         .collect::<AppResult<Vec<_>>>()?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, name, category, price, active, sort_order FROM products ORDER BY sort_order, name",
-    )?;
+    Ok(Catalog { rate_plans, products: load_products(conn, false)? })
+}
+
+/// Buffet items. `available_only`: active and (not counted, or in stock).
+pub fn load_products(conn: &Connection, available_only: bool) -> AppResult<Vec<Product>> {
+    let filter = if available_only {
+        "WHERE active = 1 AND (stock_quantity IS NULL OR stock_quantity > 0)"
+    } else {
+        ""
+    };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id, name, category, price, active, sort_order, stock_quantity FROM products {filter}
+         ORDER BY sort_order, name"
+    ))?;
     let products = stmt
         .query_map([], |r| {
             Ok(Product {
@@ -138,11 +149,11 @@ pub fn load_catalog(conn: &Connection) -> AppResult<Catalog> {
                 price: r.get(3)?,
                 active: r.get(4)?,
                 sort_order: r.get(5)?,
+                stock_quantity: r.get(6)?,
             })
         })?
         .collect::<Result<_, _>>()?;
-
-    Ok(Catalog { rate_plans, products })
+    Ok(products)
 }
 
 fn load_session_children(conn: &Connection, session: &mut Session) -> AppResult<()> {
@@ -416,57 +427,111 @@ pub fn set_controllers(conn: &Connection, session_id: &str, controllers: i64, no
     Ok(())
 }
 
-/// Add one unit at the product's *current* price. A later price change starts
-/// a new line instead of re-pricing what was already ordered.
-pub fn add_order_item(conn: &Connection, session_id: &str, product_id: &str, now: i64) -> AppResult<()> {
+pub const MAX_ORDER_QUANTITY: i64 = 99;
+
+fn out_of_stock(name: &str, available: i64) -> AppError {
+    if available <= 0 {
+        conflict(format!("موجودی «{name}» تمام شده است."))
+    } else {
+        conflict(format!("از «{name}» فقط {} عدد موجود است.", crate::fa::digits(available)))
+    }
+}
+
+/// Record a buffet order: `quantity` units at the product's *current* price on
+/// an open session (running or paused). Counted stock is taken in the same
+/// transaction and can never go negative. A later price change starts a new
+/// line instead of re-pricing what was already ordered.
+pub fn add_order_item(
+    conn: &Connection,
+    session_id: &str,
+    product_id: &str,
+    quantity: i64,
+    now: i64,
+) -> AppResult<()> {
+    if !(1..=MAX_ORDER_QUANTITY).contains(&quantity) {
+        return Err(validation(format!(
+            "تعداد باید بین ۱ تا {} باشد.",
+            crate::fa::digits(MAX_ORDER_QUANTITY)
+        )));
+    }
+    // Rejects unknown and closed sessions: orders need an active session.
     load_open_session(conn, session_id)?;
-    let product = conn
-        .query_row("SELECT name, price, active FROM products WHERE id = ?1", [product_id], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, bool>(2)?))
-        })
+    let (name, price, active, stock): (String, i64, bool, Option<i64>) = conn
+        .query_row(
+            "SELECT name, price, active, stock_quantity FROM products WHERE id = ?1",
+            [product_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
         .optional()?
         .ok_or_else(|| not_found("کالا پیدا نشد."))?;
-    let (name, price, active) = product;
     if !active {
         return Err(conflict("این کالا غیرفعال است."));
     }
+
+    let mut stock_units = 0;
+    if let Some(available) = stock {
+        if available < quantity {
+            return Err(out_of_stock(&name, available));
+        }
+        // Conditional decrement: only succeeds while enough stock remains.
+        let taken = conn.execute(
+            "UPDATE products SET stock_quantity = stock_quantity - ?2, updated_at = ?3
+             WHERE id = ?1 AND stock_quantity >= ?2",
+            params![product_id, quantity, now],
+        )?;
+        if taken == 0 {
+            return Err(out_of_stock(&name, available));
+        }
+        stock_units = quantity;
+    }
+
     let updated = conn.execute(
-        "UPDATE order_items SET quantity = quantity + 1
+        "UPDATE order_items SET quantity = quantity + ?5, stock_units = stock_units + ?6
          WHERE session_id = ?1 AND product_id = ?2 AND unit_price = ?3 AND name = ?4",
-        params![session_id, product_id, price, name],
+        params![session_id, product_id, price, name, quantity, stock_units],
     )?;
     if updated == 0 {
         conn.execute(
-            "INSERT INTO order_items (session_id, product_id, name, unit_price, quantity, added_at)
-             VALUES (?1, ?2, ?3, ?4, 1, ?5)",
-            params![session_id, product_id, name, price, now],
+            "INSERT INTO order_items (session_id, product_id, name, unit_price, quantity, added_at, stock_units)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![session_id, product_id, name, price, quantity, now, stock_units],
         )?;
     }
     Ok(())
 }
 
-/// Remove one unit from the most recent line of this product.
-pub fn remove_order_item(conn: &Connection, session_id: &str, product_id: &str) -> AppResult<()> {
+/// Remove one unit from the most recent line of this product. A unit that was
+/// taken from counted stock goes back to stock.
+pub fn remove_order_item(conn: &Connection, session_id: &str, product_id: &str, now: i64) -> AppResult<()> {
     load_open_session(conn, session_id)?;
-    let line: Option<(i64, i64)> = conn
+    let line: Option<(i64, i64, i64)> = conn
         .query_row(
-            "SELECT id, quantity FROM order_items WHERE session_id = ?1 AND product_id = ?2
+            "SELECT id, quantity, stock_units FROM order_items WHERE session_id = ?1 AND product_id = ?2
              ORDER BY id DESC LIMIT 1",
             params![session_id, product_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .optional()?;
-    match line {
-        None => Err(not_found("این کالا در سفارش نیست.")),
-        Some((id, 1)) => {
-            conn.execute("DELETE FROM order_items WHERE id = ?1", [id])?;
-            Ok(())
-        }
-        Some((id, _)) => {
-            conn.execute("UPDATE order_items SET quantity = quantity - 1 WHERE id = ?1", [id])?;
-            Ok(())
-        }
+    let Some((id, quantity, stock_units)) = line else {
+        return Err(not_found("این کالا در سفارش نیست."));
+    };
+    if stock_units > 0 {
+        // Only while the item is still counted; switching counting off forgets stock.
+        conn.execute(
+            "UPDATE products SET stock_quantity = stock_quantity + 1, updated_at = ?2
+             WHERE id = ?1 AND stock_quantity IS NOT NULL",
+            params![product_id, now],
+        )?;
     }
+    if quantity == 1 {
+        conn.execute("DELETE FROM order_items WHERE id = ?1", [id])?;
+    } else {
+        conn.execute(
+            "UPDATE order_items SET quantity = quantity - 1, stock_units = MAX(stock_units - 1, 0) WHERE id = ?1",
+            [id],
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_checkout_time(session: &Session, at: i64, now: i64) -> AppResult<()> {

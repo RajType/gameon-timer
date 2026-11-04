@@ -110,15 +110,15 @@ fn v1_store(dir: &std::path::Path) {
 }
 
 #[test]
-fn real_upgrade_v1_to_v2_adds_station_positions() {
+fn real_upgrade_from_v1_applies_every_later_migration() {
     let dir = temp();
     v1_store(dir.path());
 
     let (conn, info) = gameon_timer_lib::state::open_store(dir.path()).unwrap();
     assert_eq!(info.migrated_from, Some(1));
-    assert_eq!(info.applied_migrations, vec![2]);
+    assert_eq!(info.applied_migrations, (2..=db::latest_version()).collect::<Vec<_>>());
     assert!(info.pre_migration_backup.is_some(), "backup taken before the upgrade");
-    assert_eq!(version(&conn), 2);
+    assert_eq!(version(&conn), db::latest_version());
 
     let stations = gameon_timer_lib::repo::load_stations(&conn).unwrap();
     assert_eq!(stations.len(), 10, "existing stations kept");
@@ -138,6 +138,6 @@ fn restoring_a_v1_backup_upgrades_it() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     gameon_timer_lib::backup::restore(&mut conn, &file, &dir.path().join("backups"), T0).unwrap();
-    assert_eq!(version(&conn), 2);
+    assert_eq!(version(&conn), db::latest_version());
     assert_eq!(gameon_timer_lib::repo::load_floor(&conn).unwrap().stations.len(), 10);
 }

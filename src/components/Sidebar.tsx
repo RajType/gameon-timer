@@ -28,7 +28,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { key: 'dashboard', label: 'داشبورد', icon: LayoutGrid, view: 'dashboard' },
       { key: 'floor', label: 'نقشه‌ی سالن', icon: MapIcon, view: 'floor' },
-      { key: 'buffet', label: 'بوفه', icon: Coffee },
+      { key: 'buffet', label: 'بوفه', icon: Coffee, view: 'buffet' },
       { key: 'invoices', label: 'فاکتورها', icon: ReceiptText },
       { key: 'reports', label: 'گزارش‌ها', icon: ChartColumn },
     ],

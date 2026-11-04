@@ -12,7 +12,7 @@ fn restore_brings_back_exactly_the_backed_up_state() {
     let backups = dir.path().join("backups");
     let (mut conn, _) = seeded(dir.path());
     let id = tx(&mut conn, |c| repo::start_session(c, "station-1", Some(2), T0)).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0)).unwrap();
     let snapshot_floor = repo::load_floor(&conn).unwrap();
     let saved = backup::create_backup(&conn, &backups, BackupKind::Manual, T0 + MIN).unwrap();
     assert_eq!(saved.kind, BackupKind::Manual);

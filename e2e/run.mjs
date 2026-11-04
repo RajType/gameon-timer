@@ -579,6 +579,69 @@ try {
 
     assert((await todayInvoices()) === before + 1, 'exactly one invoice recorded today')
   })
+  await step('buffet (بوفه): stock counting, order onto an open session, sold-out rule, invoice line, persistence', async () => {
+    const productRow = (id) => `tr[data-product-id="${id}"]`
+    const rowText = (id) => d.exec(`return document.querySelector(arguments[0])?.innerText ?? ''`, productRow(id))
+    const rowByName = (name) =>
+      d.exec(`return [...document.querySelectorAll('tr[data-product-id]')].find(r => r.cells[0].innerText.trim() === arguments[0])?.innerText ?? ''`, name)
+    await nav('بوفه')
+    await d.waitFor(async () => (await rowText('soda')).includes('بدون شمارش'), { message: 'buffet list, soda not counted yet' })
+
+    // Start counting soda with 2 on hand.
+    await clickX(`//tr[@data-product-id='soda']//button[starts-with(@aria-label, 'ویرایش')]`)
+    await d.click(await d.css('[role=dialog] button[role=switch][aria-label="شمارش موجودی"]'))
+    await d.type(await control('موجودی فعلی'), '2')
+    await clickX(`//div[@role='dialog']//button[normalize-space()='ذخیره']`)
+    await toastSeen('کالا ذخیره شد')
+    await d.waitFor(async () => (await rowText('soda')).includes('۲ عدد'), { message: 'soda stock 2' })
+
+    // Order both onto station 4's open session; a real double click records one order.
+    await clickX(`//tr[@data-product-id='soda']//button[starts-with(@aria-label, 'سفارش')]`)
+    await selectOption(await control('ایستگاه'), 'station-4')
+    const plus = await d.css('[role=dialog] button[aria-label="افزودن تعداد"]')
+    await d.click(plus)
+    assert(await d.exec('return arguments[0].disabled', { [ELEMENT]: plus }), 'quantity capped at the 2 in stock')
+    assert((await d.exec(`return document.querySelector('[data-testid=order-total]').textContent`)) === '۵۰٬۰۰۰ تومان', 'order total')
+    await dismissToasts()
+    await d.doubleClick(await d.xpath(`//div[@role='dialog']//button[normalize-space()='ثبت سفارش']`))
+    await toastSeen('سفارش بوفه ثبت شد')
+    await d.waitFor(async () => (await rowText('soda')).includes('ناموجود'), { message: 'soda sold out' })
+    assert(await d.exec(`return document.querySelector(arguments[0] + ' button[aria-label^="سفارش"]').disabled`, productRow('soda')), 'sold-out item cannot be ordered')
+
+    // The tab shows exactly one order of 2; the card popover refuses more soda.
+    await nav('داشبورد')
+    await waitCard(station(4), (i) => /بوفه\s*۵۰٬۰۰۰ تومان/.test(i.text), 'one order of 2 × 25,000 on the tab')
+    await clickX(`${card(station(4))}//button[@aria-label='افزودن از بوفه']`)
+    assert(await d.exec(`return document.querySelector('button[aria-label="افزودن نوشابه"]').disabled`), 'popover: sold out')
+    await d.pressKey('\uE00C') // Escape
+
+    // Buffet orders are invoice lines.
+    await cardButton(station(4), 'تسویه')
+    await d.waitFor(() => d.exec(`return document.querySelector('[data-testid=invoice-total]')?.textContent`), { message: 'invoice preview' })
+    const items = await d.exec(`return document.querySelector('[role=dialog] [aria-label="اقلام"]').innerText`)
+    assert(items.includes('نوشابه') && items.includes('۲ × ۲۵٬۰۰۰ تومان'), `buffet line on the invoice: ${items}`)
+    await shot('13-invoice-with-buffet')
+    await clickX(`//button[contains(., 'پرداخت و بستن جلسه')]`)
+    await toastSeen('ثبت شد')
+    await waitCard(station(4), (i) => i.text.includes('آزاد'), 'free after checkout')
+
+    // A new counted item.
+    await nav('بوفه')
+    await clickX(`//button[contains(., 'کالای جدید')]`)
+    await d.type(await control('نام'), 'آبمیوه')
+    await d.type(await control('قیمت'), '35000')
+    await d.type(await control('موجودی فعلی'), '5')
+    await clickX(`//div[@role='dialog']//button[contains(., 'افزودن کالا')]`)
+    await toastSeen('کالا اضافه شد')
+    await d.waitFor(async () => (await rowByName('آبمیوه')).includes('۵ عدد'), { message: 'new item with 5 in stock' })
+    await shot('14-buffet-page')
+
+    // Stock survives a restart.
+    await launch(APP)
+    await nav('بوفه')
+    await d.waitFor(async () => (await rowText('soda')).includes('ناموجود'), { message: 'soda still sold out after restart' })
+    assert((await rowByName('آبمیوه')).includes('۵ عدد'), 'new item persisted')
+  })
 } catch {
   // reported below
 } finally {

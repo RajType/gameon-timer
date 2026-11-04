@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
-import type { Catalog, Product, RatePlan, RatePlanInput, RoundingRule, Settings, Snapshot, StationInput } from '@/types'
+import type {
+  Catalog,
+  Product,
+  ProductInput,
+  RatePlan,
+  RatePlanInput,
+  RoundingRule,
+  Settings,
+  Snapshot,
+  StationInput,
+} from '@/types'
 import { useStationStore } from './stationStore'
 
 interface SettingsState {
@@ -11,6 +21,7 @@ interface SettingsState {
 
 interface SettingsActions {
   setCatalog: (catalog: Catalog) => void
+  setProducts: (products: Product[]) => void
   setSettings: (settings: Settings) => void
   /** Admin writes throw `ApiError` so forms can show the message inline. */
   createStation: (input: StationInput) => Promise<void>
@@ -19,6 +30,8 @@ interface SettingsActions {
   createRatePlan: (input: RatePlanInput) => Promise<void>
   updateRatePlan: (id: string, input: RatePlanInput) => Promise<void>
   saveSettings: (input: Settings) => Promise<void>
+  createProduct: (input: ProductInput) => Promise<void>
+  updateProduct: (id: string, input: ProductInput) => Promise<void>
 }
 
 export const DEFAULT_ROUNDING: RoundingRule = { unit: 1000, mode: 'nearest' }
@@ -36,6 +49,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     products: [],
 
     setCatalog: (catalog) => set({ ratePlans: catalog.ratePlans, products: catalog.products }),
+    setProducts: (products) => set({ products }),
     setSettings: (settings) => set({ settings }),
 
     createStation: (input) => applySnapshot(api.createStation(input)),
@@ -44,6 +58,8 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     createRatePlan: (input) => applySnapshot(api.createRatePlan(input)),
     updateRatePlan: (id, input) => applySnapshot(api.updateRatePlan(id, input)),
     saveSettings: async (input) => set({ settings: await api.updateSettings(input) }),
+    createProduct: async (input) => set({ products: await api.createProduct(input) }),
+    updateProduct: async (id, input) => set({ products: await api.updateProduct(id, input) }),
   }
 })
 

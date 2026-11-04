@@ -55,4 +55,15 @@ describe('app shell navigation', () => {
     expect(map.querySelector('[inert]')).toBeNull() // cards interactive
     expect(useUiStore.getState().view).toBe('floor')
   })
+
+  it('sidebar «بوفه» is enabled and renders the buffet list', async () => {
+    render(<App />)
+    const item = await screen.findByRole('button', { name: /^بوفه/ })
+    expect(item).toHaveProperty('disabled', false)
+    fireEvent.click(item)
+    expect(await screen.findByRole('button', { name: /کالای جدید/ })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('بوفه')
+    expect(document.querySelectorAll('[data-product-id]')).toHaveLength(products.length)
+    expect(useUiStore.getState().view).toBe('buffet')
+  })
 })

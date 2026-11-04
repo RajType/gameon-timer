@@ -14,7 +14,8 @@ use crate::bootstrap::{self, Bootstrap};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Catalog, DaySummary, Floor, Invoice, RatePlanInput, Settings, SettingsInput, StationInput,
+    Catalog, DaySummary, Floor, Invoice, Product, ProductInput, RatePlanInput, Settings, SettingsInput,
+    StationInput,
 };
 use crate::repo::{self, now_ms};
 use crate::state::{AppState, StartupInfo};
@@ -105,13 +106,35 @@ pub async fn set_session_controllers(
     write_floor(&state, |tx| repo::set_controllers(tx, &session_id, controllers, now_ms()))
 }
 
+/// Floor plus the buffet items, so stock shown everywhere is fresh after an order.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderResult {
+    pub floor: Floor,
+    pub products: Vec<Product>,
+}
+
+fn write_order(
+    state: &AppState,
+    f: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
+) -> AppResult<OrderResult> {
+    write(state, |tx| {
+        f(tx)?;
+        Ok(OrderResult { floor: repo::load_floor(tx)?, products: repo::load_products(tx, false)? })
+    })
+}
+
+/// Record a buffet order on an active session (stock-checked, atomic).
 #[tauri::command]
 pub async fn add_order_item(
     state: State<'_, AppState>,
     session_id: String,
     product_id: String,
-) -> AppResult<Floor> {
-    write_floor(&state, |tx| repo::add_order_item(tx, &session_id, &product_id, now_ms()))
+    quantity: Option<i64>,
+) -> AppResult<OrderResult> {
+    write_order(&state, |tx| {
+        repo::add_order_item(tx, &session_id, &product_id, quantity.unwrap_or(1), now_ms())
+    })
 }
 
 #[tauri::command]
@@ -119,8 +142,37 @@ pub async fn remove_order_item(
     state: State<'_, AppState>,
     session_id: String,
     product_id: String,
-) -> AppResult<Floor> {
-    write_floor(&state, |tx| repo::remove_order_item(tx, &session_id, &product_id))
+) -> AppResult<OrderResult> {
+    write_order(&state, |tx| repo::remove_order_item(tx, &session_id, &product_id, now_ms()))
+}
+
+/// Buffet items; `available_only` = active and in stock (or not counted).
+#[tauri::command]
+pub async fn list_buffet_items(
+    state: State<'_, AppState>,
+    available_only: Option<bool>,
+) -> AppResult<Vec<Product>> {
+    with_conn(&state, |conn| repo::load_products(conn, available_only.unwrap_or(false)))
+}
+
+#[tauri::command]
+pub async fn create_product(state: State<'_, AppState>, input: ProductInput) -> AppResult<Vec<Product>> {
+    write(&state, |tx| {
+        admin::create_product(tx, &input, now_ms())?;
+        repo::load_products(tx, false)
+    })
+}
+
+#[tauri::command]
+pub async fn update_product(
+    state: State<'_, AppState>,
+    id: String,
+    input: ProductInput,
+) -> AppResult<Vec<Product>> {
+    write(&state, |tx| {
+        admin::update_product(tx, &id, &input, now_ms())?;
+        repo::load_products(tx, false)
+    })
 }
 
 #[tauri::command]

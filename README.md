@@ -92,6 +92,22 @@ positions in px from the board's top-left, so the board is not mirrored for
 RTL (the cards are). `0, 0` means "not placed yet": such stations are shown in a
 default right-to-left grid until moved.
 
+### Buffet & inventory
+
+**بوفه** (sidebar) lists the buffet items (`products`) with price and stock,
+orders an item onto a station's open session, and adds or edits items. Orders
+are `order_items` rows on that session, so they appear on its live total and
+as invoice lines; name and unit price are snapshotted at order time.
+
+- **Stock never goes negative**: a database `CHECK`, plus a conditional
+  decrement in the same transaction as the order (`add_order_item`).
+- **Orders need an active session** (running or paused); unknown or closed
+  sessions are rejected, and a closed session's orders are frozen by triggers.
+- `stock_quantity` `NULL` = not counted (always available) — what every item
+  starts as after the 0003 upgrade, so nothing becomes unsellable. Reducing an
+  order line returns to stock exactly the units that were taken from it.
+- The stock field in the item form is a count of what is on hand now (stocktake).
+
 ### Backups
 
 - Automatic: once a day at startup (last 14 kept), before migrations, and
@@ -105,9 +121,10 @@ default right-to-left grid until moved.
 ```
 src/
   components/           dashboard building blocks (StationCard, SessionMeter, InvoiceModal, FloorMap, …)
+    buffet/             BuffetOrderModal, ProductForm, StockBadge
     admin/              StationForm, RatePlanForm, ReceiptPreview
     ui/                 Button, Field, MoneyInput, Switch, Modal, Popover, Section, …
-  pages/                Dashboard, StationsPage, RatesPage, SettingsPage, DataPage
+  pages/                Dashboard, FloorPage, BuffetPage, StationsPage, RatesPage, SettingsPage, DataPage
   store/                Zustand: appStore (boot), stationStore (floor), settingsStore, uiStore
   lib/                  api (typed commands), billing (mirror of Rust), currency, time,
                         legacy (localStorage hand-off), alerts, sound, rates, station
@@ -124,9 +141,9 @@ e2e/                    WebDriver tests against the real app (tauri-driver)
 
 | Layer | Command | Covers |
 | --- | --- | --- |
-| Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation |
-| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off, layout helpers, double-submission guards, live floor map components (jsdom) |
-| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart, live floor map (read-only, start/checkout once, keyboard, window resize) |
+| Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation, buffet stock (never negative, active session only, returns, invoice lines, v2 → v3 upgrade) |
+| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off, layout helpers, double-submission guards, live floor map and buffet components (jsdom) |
+| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart, live floor map (read-only, start/checkout once, keyboard, window resize), buffet (stock, order on an open session, sold out, invoice line, restart) |
 
 E2E needs `tauri-driver` (`cargo install tauri-driver --locked`), `WebKitWebDriver`
 (`webkit2gtk-driver` package) and a debug build with the embedded frontend:

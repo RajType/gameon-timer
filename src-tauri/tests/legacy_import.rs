@@ -204,7 +204,7 @@ fn imported_sessions_continue_normally() {
     let paused = boot.floor.sessions.iter().find(|s| s.open_segment().is_none()).unwrap().id.clone();
     let now = T0 + 4 * HOUR;
     tx(&mut conn, |c| repo::resume_session(c, &paused, now)).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &paused, "water", now)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &paused, "water", 1, now)).unwrap();
     let at = now + 30 * MIN;
     let p = repo::preview_checkout(&conn, &paused, at, at).unwrap();
     let invoice = tx(&mut conn, |c| repo::checkout(c, &paused, at, Some(p.total), at)).unwrap();
