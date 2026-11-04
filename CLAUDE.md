@@ -25,3 +25,19 @@
 ## Workflow
 - Prioritize feature implementation that ensures business continuity (timers, pausing, checkout).
 - Always verify RTL compatibility for new components.
+
+# GameOn Timer & POS Project Rules
+
+## Core Capabilities
+1. High-Density Dashboard: Console stations list with active counters.
+2. 2D Interactive Floor Plan: Draggable 2D layout editor for store arrangement (stations, VIP rooms, walls, counters) with live status overlay.
+3. Pricing & Rates Matrix: Tiered pricing by console type, controller count, and peak hours.
+4. Buffet & Inventory Module: Quick-billing snack items attached to active game sessions.
+5. Smart Thermal Receipt Printer & POS Checkout: With rounding algorithms and discount support.
+6. Settings & Customization Panel: Sound triggers, receipt headers, station configurations.
+
+## Architecture Guidelines
+- 2D Canvas: Use HTML5 Canvas or SVG with `@dnd-kit` / `react-grid-layout` or simple relative coordinate state `{ x, y, rotation, width, height }`.
+- State Layer: Zustand with persistence (`zustand/middleware/persist`).
+- Design System: Strict Apple HIG dark mode, minimalist gold accents (#D4AF37), Vazirmatn font, RTL direction.
+
