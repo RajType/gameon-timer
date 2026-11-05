@@ -93,7 +93,7 @@ export function StationsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       {plan?.name ?? '—'}
-                      {from !== undefined && <span className="ms-2 text-xs text-gold tabular-nums">از {formatToman(from)}</span>}
+                      {from !== undefined && <span className="ms-2 text-xs text-brand tabular-nums">از {formatToman(from)}</span>}
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {open ? (

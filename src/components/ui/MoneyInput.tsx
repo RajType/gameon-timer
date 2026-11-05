@@ -10,13 +10,15 @@ interface MoneyInputProps {
   'aria-label'?: string
   invalid?: boolean
   className?: string
+  /** Suffix shown in the field (default «تومان»). */
+  unit?: string
 }
 
 /**
- * Whole-Toman input. Accepts Persian or Latin digits and any separators;
- * shows the grouped Persian number when not being edited.
+ * Whole-number input (Toman by default). Accepts Persian or Latin digits and
+ * any separators; shows the grouped Persian number when not being edited.
  */
-export function MoneyInput({ id, value, onChange, invalid, className, ...aria }: MoneyInputProps) {
+export function MoneyInput({ id, value, onChange, invalid, className, unit = CURRENCY_LABEL, ...aria }: MoneyInputProps) {
   const [draft, setDraft] = useState<string | null>(null)
   const shown = draft ?? (value === null ? '' : formatNumber(value))
 
@@ -40,7 +42,7 @@ export function MoneyInput({ id, value, onChange, invalid, className, ...aria }:
         className={cn(controlClass, 'h-10 w-full ps-14 text-end tabular-nums')}
       />
       <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-xs text-label-tertiary">
-        {CURRENCY_LABEL}
+        {unit}
       </span>
     </div>
   )

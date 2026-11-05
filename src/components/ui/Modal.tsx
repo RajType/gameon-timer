@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useId, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/cn'
 
 interface ModalProps {
@@ -23,7 +24,10 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 'max
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose, busy])
 
-  return (
+  // Portalled to <body>: a `.glass` surface (backdrop-filter) or the scaled floor
+  // board (transform) would otherwise become the containing block of this
+  // `position: fixed` layer and trap the dialog inside it.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/55 p-6 backdrop-blur-[2px] motion-safe:animate-fade-in"
       onPointerDown={(event) => {
@@ -59,6 +63,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = 'max
         <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-4 pb-1">{children}</div>
         {footer && <footer className="flex gap-2 p-6 pt-5">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

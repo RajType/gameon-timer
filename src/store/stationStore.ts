@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { localDayRange } from '@/lib/time'
-import type { DaySummary, Floor, Invoice, Session, Station } from '@/types'
+import type { DaySummary, Floor, Invoice, OrderResult, Session, Station } from '@/types'
+import { useSettingsStore } from './settingsStore'
 import { toastError } from './uiStore'
 
 interface StationState {
@@ -18,12 +19,14 @@ interface StationState {
 interface StationActions {
   setFloor: (floor: Floor) => void
   refreshSummary: (now?: number) => Promise<void>
-  startSession: (stationId: string, controllers?: number) => Promise<void>
-  pauseSession: (stationId: string) => Promise<void>
-  resumeSession: (stationId: string) => Promise<void>
-  setControllers: (stationId: string, controllers: number) => Promise<void>
-  addOrderItem: (stationId: string, productId: string) => Promise<void>
-  removeOrderItem: (stationId: string, productId: string) => Promise<void>
+  // Resolve to `true` on success; failures are shown as a toast.
+  startSession: (stationId: string, controllers?: number) => Promise<boolean>
+  pauseSession: (stationId: string) => Promise<boolean>
+  resumeSession: (stationId: string) => Promise<boolean>
+  setControllers: (stationId: string, controllers: number) => Promise<boolean>
+  /** Buffet order on the station's open session (stock-checked by the backend). */
+  addOrderItem: (stationId: string, productId: string, quantity?: number) => Promise<boolean>
+  removeOrderItem: (stationId: string, productId: string) => Promise<boolean>
   /** Optimistic: the card stays where it was dropped; reverted if saving fails. */
   moveStation: (stationId: string, posX: number, posY: number) => Promise<void>
   /** Throws on failure so the checkout dialog can react (e.g. stale total). */
@@ -38,6 +41,13 @@ let moveSequence = 0
 /** One checkout per station at a time: a repeat call joins the one in flight. */
 const checkoutsInFlight = new Map<string, Promise<Invoice>>()
 
+/** Orders change stock: publish the fresh buffet items, hand back the floor. */
+async function withProducts(request: Promise<OrderResult>): Promise<Floor> {
+  const result = await request
+  useSettingsStore.getState().setProducts(result.products)
+  return result.floor
+}
+
 function bySession(sessions: Session[]): Record<string, Session> {
   return Object.fromEntries(sessions.map((s) => [s.stationId, s]))
 }
@@ -47,13 +57,19 @@ function bySession(sessions: Session[]): Record<string, Session> {
  * command that runs in one transaction and returns the fresh floor.
  */
 export const useStationStore = create<StationStore>()((set, get) => {
-  async function mutate(stationId: string, title: string, run: (session: Session | undefined) => Promise<Floor>) {
-    if (get().pending[stationId]) return
+  async function mutate(
+    stationId: string,
+    title: string,
+    run: (session: Session | undefined) => Promise<Floor>,
+  ): Promise<boolean> {
+    if (get().pending[stationId]) return false
     set((s) => ({ pending: { ...s.pending, [stationId]: true } }))
     try {
       get().setFloor(await run(get().sessions[stationId]))
+      return true
     } catch (error) {
       toastError(title, error)
+      return false
     } finally {
       set((s) => {
         const pending = { ...s.pending }
@@ -94,10 +110,12 @@ export const useStationStore = create<StationStore>()((set, get) => {
       mutate(stationId, 'ادامه‌ی جلسه ناموفق بود', (s) => api.resumeSession(sessionId(s))),
     setControllers: (stationId, controllers) =>
       mutate(stationId, 'تغییر تعداد دسته ناموفق بود', (s) => api.setSessionControllers(sessionId(s), controllers)),
-    addOrderItem: (stationId, productId) =>
-      mutate(stationId, 'افزودن به سفارش ناموفق بود', (s) => api.addOrderItem(sessionId(s), productId)),
+    addOrderItem: (stationId, productId, quantity = 1) =>
+      mutate(stationId, 'ثبت سفارش بوفه ناموفق بود', (s) =>
+        withProducts(api.addOrderItem(sessionId(s), productId, quantity)),
+      ),
     removeOrderItem: (stationId, productId) =>
-      mutate(stationId, 'حذف از سفارش ناموفق بود', (s) => api.removeOrderItem(sessionId(s), productId)),
+      mutate(stationId, 'حذف از سفارش ناموفق بود', (s) => withProducts(api.removeOrderItem(sessionId(s), productId))),
 
     moveStation: async (stationId, posX, posY) => {
       const previous = get().stations.find((s) => s.id === stationId)

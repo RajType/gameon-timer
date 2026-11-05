@@ -13,8 +13,10 @@ use crate::backup::{self, BackupInfo, RestoreReport};
 use crate::bootstrap::{self, Bootstrap};
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::logo;
 use crate::models::{
-    Catalog, DaySummary, Floor, Invoice, RatePlanInput, Settings, SettingsInput, StationInput,
+    Catalog, Category, CategoryInput, DaySummary, Floor, Invoice, Product, ProductInput, RatePlanInput,
+    Settings, SettingsInput, StationInput,
 };
 use crate::repo::{self, now_ms};
 use crate::state::{AppState, StartupInfo};
@@ -105,13 +107,35 @@ pub async fn set_session_controllers(
     write_floor(&state, |tx| repo::set_controllers(tx, &session_id, controllers, now_ms()))
 }
 
+/// Floor plus the buffet items, so stock shown everywhere is fresh after an order.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderResult {
+    pub floor: Floor,
+    pub products: Vec<Product>,
+}
+
+fn write_order(
+    state: &AppState,
+    f: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
+) -> AppResult<OrderResult> {
+    write(state, |tx| {
+        f(tx)?;
+        Ok(OrderResult { floor: repo::load_floor(tx)?, products: repo::load_products(tx, false)? })
+    })
+}
+
+/// Record a buffet order on an active session (stock-checked, atomic).
 #[tauri::command]
 pub async fn add_order_item(
     state: State<'_, AppState>,
     session_id: String,
     product_id: String,
-) -> AppResult<Floor> {
-    write_floor(&state, |tx| repo::add_order_item(tx, &session_id, &product_id, now_ms()))
+    quantity: Option<i64>,
+) -> AppResult<OrderResult> {
+    write_order(&state, |tx| {
+        repo::add_order_item(tx, &session_id, &product_id, quantity.unwrap_or(1), now_ms())
+    })
 }
 
 #[tauri::command]
@@ -119,8 +143,121 @@ pub async fn remove_order_item(
     state: State<'_, AppState>,
     session_id: String,
     product_id: String,
-) -> AppResult<Floor> {
-    write_floor(&state, |tx| repo::remove_order_item(tx, &session_id, &product_id))
+) -> AppResult<OrderResult> {
+    write_order(&state, |tx| repo::remove_order_item(tx, &session_id, &product_id, now_ms()))
+}
+
+/// Buffet items; `available_only` = active and in stock (or not counted).
+#[tauri::command]
+pub async fn list_buffet_items(
+    state: State<'_, AppState>,
+    available_only: Option<bool>,
+) -> AppResult<Vec<Product>> {
+    with_conn(&state, |conn| repo::load_products(conn, available_only.unwrap_or(false)))
+}
+
+/// Buffet items together with categories (product counts change with assignments).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuffetCatalog {
+    pub products: Vec<Product>,
+    pub categories: Vec<Category>,
+}
+
+fn write_buffet(
+    state: &AppState,
+    f: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
+) -> AppResult<BuffetCatalog> {
+    write(state, |tx| {
+        f(tx)?;
+        Ok(BuffetCatalog {
+            products: repo::load_products(tx, false)?,
+            categories: repo::load_categories(tx)?,
+        })
+    })
+}
+
+#[tauri::command]
+pub async fn create_product(state: State<'_, AppState>, input: ProductInput) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::create_product(tx, &input, now_ms()).map(|_| ()))
+}
+
+#[tauri::command]
+pub async fn update_product(
+    state: State<'_, AppState>,
+    id: String,
+    input: ProductInput,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::update_product(tx, &id, &input, now_ms()))
+}
+
+// ---- categories --------------------------------------------------------------
+
+#[tauri::command]
+pub async fn list_categories(state: State<'_, AppState>) -> AppResult<Vec<Category>> {
+    with_conn(&state, |conn| repo::load_categories(conn))
+}
+
+#[tauri::command]
+pub async fn create_category(state: State<'_, AppState>, input: CategoryInput) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::create_category(tx, &input).map(|_| ()))
+}
+
+#[tauri::command]
+pub async fn update_category(
+    state: State<'_, AppState>,
+    id: i64,
+    input: CategoryInput,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::update_category(tx, id, &input))
+}
+
+/// Delete a category; its products move to `reassign_to` (or become
+/// uncategorised) in the same transaction.
+#[tauri::command]
+pub async fn delete_category(
+    state: State<'_, AppState>,
+    id: i64,
+    reassign_to: Option<i64>,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::delete_category(tx, id, reassign_to, now_ms()).map(|_| ()))
+}
+
+/// Re-categorise several products at once — all of them or none.
+#[tauri::command]
+pub async fn assign_products_category(
+    state: State<'_, AppState>,
+    product_ids: Vec<String>,
+    category_id: Option<i64>,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| {
+        admin::assign_products_category(tx, &product_ids, category_id, now_ms()).map(|_| ())
+    })
+}
+
+// ---- logo ----------------------------------------------------------------------
+
+/// Open dialog for an image; returns its (validated) absolute path, `None` if
+/// cancelled. Nothing is saved until settings are saved.
+#[tauri::command]
+pub async fn pick_logo_file(app: AppHandle) -> AppResult<Option<String>> {
+    let Some(choice) = app
+        .dialog()
+        .file()
+        .set_title("انتخاب لوگو")
+        .add_filter("تصویر", &logo::LOGO_EXTENSIONS)
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = choice.into_path().map_err(|e| AppError::Internal(e.to_string()))?;
+    logo::validate_logo_path(&path.to_string_lossy()).map(Some)
+}
+
+/// The logo at `path` as a `data:` URL (for the sidebar and receipt preview).
+#[tauri::command]
+pub async fn read_logo(path: String) -> AppResult<String> {
+    logo::read_logo_data_url(&path)
 }
 
 #[tauri::command]

@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 import { cn } from '@/lib/cn'
 
 export const controlClass =
-  'rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-label outline-none transition-colors placeholder:text-label-tertiary focus:border-gold/60 focus:ring-2 focus:ring-gold/20 disabled:opacity-50 aria-[invalid=true]:border-status-maintenance/70'
+  'rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-label outline-none transition-colors placeholder:text-label-tertiary focus:border-brand/60 focus:ring-2 focus:ring-brand/20 disabled:opacity-50 aria-[invalid=true]:border-status-maintenance/70'
 
 interface FieldProps {
   label: string

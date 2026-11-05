@@ -91,7 +91,7 @@ function FloorFrame({ scrollRef, extent, scale, label, children }: FloorFramePro
             width: extent.width,
             height: extent.height,
             transform: scale === 1 ? undefined : `scale(${scale})`,
-            backgroundImage: 'radial-gradient(circle, rgb(255 255 255 / 0.07) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, var(--color-floor-dot) 1px, transparent 1px)',
             backgroundSize: `${FLOOR.grid * 2}px ${FLOOR.grid * 2}px`,
           }}
         >

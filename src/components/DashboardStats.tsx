@@ -36,8 +36,8 @@ export function DashboardStats() {
         label="ایستگاه‌های فعال"
         value={`${formatNumber(open.length)} از ${formatNumber(inService)}`}
       />
-      <StatTile icon={Timer} label="مبلغ جلسات باز" value={formatToman(openTotal)} tone="gold" />
-      <StatTile icon={Wallet} label="درآمد امروز" value={formatToman(summary.revenue)} tone="gold" />
+      <StatTile icon={Timer} label="مبلغ جلسات باز" value={formatToman(openTotal)} tone="brand" />
+      <StatTile icon={Wallet} label="درآمد امروز" value={formatToman(summary.revenue)} tone="brand" />
       <StatTile icon={ReceiptText} label="فاکتورهای امروز" value={formatNumber(summary.invoiceCount)} />
     </div>
   )

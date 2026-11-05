@@ -16,7 +16,7 @@ export function BootScreen() {
     return (
       <div className="grid h-full place-items-center">
         <div className="flex flex-col items-center gap-4 text-label-secondary">
-          <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-b from-gold-300 to-gold-600 text-black shadow-gold">
+          <div className="grid size-14 place-items-center rounded-2xl bg-gradient-to-b from-brand-300 to-brand-600 text-brand-contrast shadow-brand">
             <Gamepad2 className="size-7" />
           </div>
           <p className="flex items-center gap-2 text-[13px]">

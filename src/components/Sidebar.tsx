@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { toPersianDigits } from '@/lib/currency'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore, type View } from '@/store/uiStore'
 
 interface NavItem {
@@ -28,7 +29,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { key: 'dashboard', label: 'داشبورد', icon: LayoutGrid, view: 'dashboard' },
       { key: 'floor', label: 'نقشه‌ی سالن', icon: MapIcon, view: 'floor' },
-      { key: 'buffet', label: 'بوفه', icon: Coffee },
+      { key: 'buffet', label: 'بوفه', icon: Coffee, view: 'buffet' },
       { key: 'invoices', label: 'فاکتورها', icon: ReceiptText },
       { key: 'reports', label: 'گزارش‌ها', icon: ChartColumn },
     ],
@@ -62,7 +63,7 @@ function NavButton({ item }: { item: NavItem }) {
         'disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-label-secondary',
       )}
     >
-      <Icon className={cn('size-[18px]', active && 'text-gold')} strokeWidth={1.8} />
+      <Icon className={cn('size-[18px]', active && 'text-brand')} strokeWidth={1.8} />
       <span>{item.label}</span>
       {!item.view && <span className="ms-auto text-[10px] text-label-tertiary">به‌زودی</span>}
     </button>
@@ -70,14 +71,20 @@ function NavButton({ item }: { item: NavItem }) {
 }
 
 export function Sidebar() {
+  const storeName = useSettingsStore((s) => s.settings?.storeName) || 'گیم‌آن'
+  const logoUrl = useSettingsStore((s) => s.logoUrl)
   return (
     <aside className="glass flex w-60 shrink-0 flex-col border-e border-separator">
       <div className="flex h-16 items-center gap-3 px-4">
-        <div className="grid size-9 place-items-center rounded-[10px] bg-gradient-to-b from-gold-300 to-gold-600 text-black shadow-gold">
-          <Gamepad2 className="size-5" strokeWidth={2} />
-        </div>
-        <div className="leading-tight">
-          <p className="text-[15px] font-bold tracking-tight">گیم‌آن</p>
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="size-9 shrink-0 rounded-[10px] bg-white/[0.06] object-contain" />
+        ) : (
+          <div className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-gradient-to-b from-brand-300 to-brand-600 text-brand-contrast shadow-brand">
+            <Gamepad2 className="size-5" strokeWidth={2} />
+          </div>
+        )}
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[15px] font-bold tracking-tight">{storeName}</p>
           <p className="text-[11px] text-label-secondary">مدیریت کنسول‌سنتر</p>
         </div>
       </div>

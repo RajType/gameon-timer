@@ -1,5 +1,7 @@
 import { Coffee, Minus, Plus } from 'lucide-react'
 import { useMemo } from 'react'
+import { isAvailable, stockLabel, stockLevel } from '@/lib/buffet'
+import { cn } from '@/lib/cn'
 import { formatNumber, formatToman } from '@/lib/currency'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useStationStore } from '@/store/stationStore'
@@ -44,10 +46,23 @@ export function BuffetQuickAdd({ stationId }: BuffetQuickAddProps) {
       <ul className="flex max-h-72 flex-col overflow-y-auto">
         {products.map((item) => {
           const quantity = quantities.get(item.id) ?? 0
+          const level = stockLevel(item)
           return (
             <li key={item.id} className="flex h-9 items-center gap-2 rounded-lg ps-2.5 pe-1 hover:bg-white/[0.06]">
-              <span className="min-w-0 flex-1 truncate text-[13px]">{item.name}</span>
-              <span className="text-xs text-gold tabular-nums">{formatToman(item.price)}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px]">
+                {item.name}
+                {level !== 'uncounted' && (
+                  <span
+                    className={cn(
+                      'ms-1.5 text-[10px] tabular-nums',
+                      level === 'out' ? 'text-status-maintenance' : level === 'low' ? 'text-status-paused' : 'text-label-tertiary',
+                    )}
+                  >
+                    {stockLabel(item)}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-brand tabular-nums">{formatToman(item.price)}</span>
               {/* Fixed width keeps the price column aligned as controls appear. */}
               <div className="flex w-[4.5rem] items-center justify-end">
                 {quantity > 0 && (
@@ -66,7 +81,7 @@ export function BuffetQuickAdd({ stationId }: BuffetQuickAddProps) {
                 )}
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !isAvailable(item)}
                   aria-label={`افزودن ${item.name}`}
                   onClick={() => void addOrderItem(stationId, item.id)}
                   className="grid size-7 place-items-center rounded-md text-label-secondary hover:bg-white/[0.08] hover:text-label disabled:opacity-40"

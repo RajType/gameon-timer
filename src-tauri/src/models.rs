@@ -114,10 +114,13 @@ pub struct RatePlan {
 pub struct Product {
     pub id: String,
     pub name: String,
-    pub category: String,
+    /// `None` = uncategorised (still fully usable).
+    pub category_id: Option<i64>,
     pub price: i64,
     pub active: bool,
     pub sort_order: i64,
+    /// Units on hand; `None` = not counted (always available).
+    pub stock_quantity: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +180,10 @@ pub struct Settings {
     pub sound_volume: i64,
     pub alert_every_minutes: i64,
     pub long_pause_minutes: i64,
+    /// Lowercase `#rrggbb`; drives `--brand-color` in the UI.
+    pub brand_color: String,
+    /// Absolute path of the logo image, `""` = none.
+    pub logo_path: String,
 }
 
 impl Settings {
@@ -246,6 +253,24 @@ pub struct Floor {
 pub struct Catalog {
     pub rate_plans: Vec<RatePlan>,
     pub products: Vec<Product>,
+    pub categories: Vec<Category>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Category {
+    pub id: i64,
+    pub name: String,
+    /// Lowercase `#rrggbb`.
+    pub color: String,
+    pub product_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryInput {
+    pub name: String,
+    pub color: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -274,3 +299,14 @@ pub struct RatePlanInput {
 }
 
 pub type SettingsInput = Settings;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductInput {
+    pub name: String,
+    pub category_id: Option<i64>,
+    pub price: i64,
+    pub active: bool,
+    /// `None` = do not count stock for this item.
+    pub stock_quantity: Option<i64>,
+}

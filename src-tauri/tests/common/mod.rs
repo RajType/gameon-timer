@@ -47,3 +47,28 @@ pub fn tx<T>(
     tx.commit().unwrap();
     Ok(out)
 }
+
+/// Seed a database at schema v1–v3 the way those versions did (raw SQL, old
+/// column set — e.g. the `products.category` text column). Upgrade tests must
+/// not use today's seed code on an old schema.
+pub fn seed_like_v1(conn: &Connection) {
+    conn.execute_batch(
+        "INSERT INTO rate_plans (id, name, created_at, updated_at) VALUES ('plan-ps5', 'PS5 استاندارد', 0, 0);
+         INSERT INTO rate_plan_tiers VALUES ('plan-ps5', 1, 150000), ('plan-ps5', 2, 150000);
+         INSERT INTO products (id, name, category, price, active, sort_order, created_at, updated_at) VALUES
+           ('water', 'آب معدنی', 'drink', 10000, 1, 0, 0, 0),
+           ('soda', 'نوشابه', 'drink', 25000, 1, 1, 0, 0),
+           ('chips', 'چیپس', 'snack', 30000, 1, 2, 0, 0),
+           ('sandwich', 'ساندویچ', 'food', 120000, 1, 3, 0, 0);
+         INSERT INTO meta (key, value) VALUES ('initialized_at', '0');",
+    )
+    .unwrap();
+    for i in 1..=10 {
+        conn.execute(
+            "INSERT INTO stations (id, name, kind, rate_plan_id, enabled, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, 'ps5', 'plan-ps5', 1, ?3, 0, 0)",
+            rusqlite::params![format!("station-{i}"), format!("ایستگاه {i}"), i],
+        )
+        .unwrap();
+    }
+}

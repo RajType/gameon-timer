@@ -16,7 +16,7 @@ fn open_sessions_survive_restart_and_hard_crash() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     let id = start(&mut conn, "station-1", Some(2), T0);
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0 + MIN)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0 + MIN)).unwrap();
     tx(&mut conn, |c| repo::pause_session(c, &id, T0 + 20 * MIN)).unwrap();
     tx(&mut conn, |c| repo::resume_session(c, &id, T0 + 30 * MIN)).unwrap();
 
@@ -59,10 +59,10 @@ fn checkout_produces_a_consistent_immutable_invoice() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     let id = start(&mut conn, "station-2", Some(2), T0);
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0)).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0)).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "chips", T0)).unwrap();
-    tx(&mut conn, |c| repo::remove_order_item(c, &id, "chips")).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "chips", 1, T0)).unwrap();
+    tx(&mut conn, |c| repo::remove_order_item(c, &id, "chips", T0)).unwrap();
     tx(&mut conn, |c| repo::set_controllers(c, &id, 4, T0 + 30 * MIN)).unwrap();
 
     let at = T0 + 45 * MIN;
@@ -87,7 +87,7 @@ fn checkout_produces_a_consistent_immutable_invoice() {
     assert!(conn.execute("DELETE FROM invoices", []).is_err());
     assert!(conn.execute("UPDATE invoice_lines SET amount = 0", []).is_err());
     assert!(conn.execute("UPDATE sessions SET closed_at = NULL WHERE id = ?1", [&id]).is_err());
-    assert!(tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", at)).is_err());
+    assert!(tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, at)).is_err());
     assert!(
         conn.execute(
             "INSERT INTO order_items (session_id, name, unit_price, quantity, added_at) VALUES (?1, 'x', 1, 1, 0)",
@@ -105,7 +105,7 @@ fn stale_preview_and_double_checkout_are_rejected_without_writing() {
     let id = start(&mut conn, "station-3", None, T0);
     let at = T0 + 30 * MIN;
     let preview = repo::preview_checkout(&conn, &id, at, at).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "sandwich", at)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "sandwich", 1, at)).unwrap();
 
     let err = tx(&mut conn, |c| repo::checkout(c, &id, at, Some(preview.total), at)).unwrap_err();
     assert!(matches!(err, AppError::Conflict(_)), "{err}");
@@ -137,7 +137,7 @@ fn later_changes_never_rewrite_history() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     let id = start(&mut conn, "station-1", Some(2), T0);
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "coffee", T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "coffee", 1, T0)).unwrap();
     let at = T0 + HOUR;
     let total = repo::preview_checkout(&conn, &id, at, at).unwrap().total;
     let invoice = tx(&mut conn, |c| repo::checkout(c, &id, at, Some(total), at)).unwrap();
@@ -218,9 +218,9 @@ fn product_price_change_mid_session_starts_a_new_line() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     let id = start(&mut conn, "station-1", None, T0);
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0)).unwrap();
     conn.execute("UPDATE products SET price = 30000 WHERE id = 'soda'", []).unwrap();
-    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", T0)).unwrap();
+    tx(&mut conn, |c| repo::add_order_item(c, &id, "soda", 1, T0)).unwrap();
     let orders = repo::load_open_session(&conn, &id).unwrap().orders;
     let prices: Vec<(i64, i64)> = orders.iter().map(|o| (o.unit_price, o.quantity)).collect();
     assert_eq!(prices, vec![(25_000, 1), (30_000, 1)]);

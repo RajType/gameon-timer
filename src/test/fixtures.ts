@@ -1,5 +1,5 @@
 // Shared test data (not imported by the app).
-import type { Invoice, Product, RatePlan, Session, Settings, Station } from '@/types'
+import type { Category, Invoice, Product, RatePlan, Session, Settings, Station } from '@/types'
 
 export const MIN = 60_000
 /** 2026-11-04T17:30:00Z */
@@ -16,7 +16,14 @@ export const settings: Settings = {
   soundVolume: 0,
   alertEveryMinutes: 0,
   longPauseMinutes: 0,
+  brandColor: '#d4af37',
+  logoPath: '',
 }
+
+export const categories: Category[] = [
+  { id: 1, name: 'نوشیدنی', color: '#64d2ff', productCount: 2 },
+  { id: 2, name: 'تنقلات', color: '#bf5af2', productCount: 1 },
+]
 
 export const ratePlans: RatePlan[] = [
   {
@@ -30,7 +37,13 @@ export const ratePlans: RatePlan[] = [
   },
 ]
 
-export const products: Product[] = [{ id: 'soda', name: 'نوشابه', category: 'drink', price: 25_000, active: true, sortOrder: 0 }]
+/** Counted with stock, not counted, sold out, inactive + uncategorised. */
+export const products: Product[] = [
+  { id: 'soda', name: 'نوشابه', categoryId: 1, price: 25_000, active: true, sortOrder: 0, stockQuantity: 3 },
+  { id: 'coffee', name: 'قهوه', categoryId: 1, price: 45_000, active: true, sortOrder: 1, stockQuantity: null },
+  { id: 'cake', name: 'کیک', categoryId: 2, price: 20_000, active: true, sortOrder: 2, stockQuantity: 0 },
+  { id: 'old', name: 'کالای قدیمی', categoryId: null, price: 10_000, active: false, sortOrder: 3, stockQuantity: null },
+]
 
 const station = (n: number, posX: number, posY: number, enabled = true): Station => ({
   id: `station-${n}`,

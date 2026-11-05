@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-export type View = 'dashboard' | 'floor' | 'stations' | 'rates' | 'settings' | 'data'
+export type View = 'dashboard' | 'floor' | 'buffet' | 'stations' | 'rates' | 'settings' | 'data'
 export type StationFilter = 'all' | 'running' | 'paused' | 'available'
 
 export interface CheckoutTarget {

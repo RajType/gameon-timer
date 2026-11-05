@@ -4,7 +4,8 @@
 use rusqlite::{Connection, params};
 
 use crate::error::{AppResult, conflict, not_found, validation};
-use crate::models::{RatePlanInput, RateTier, SettingsInput, StationInput};
+use crate::logo;
+use crate::models::{CategoryInput, ProductInput, RatePlanInput, RateTier, SettingsInput, StationInput};
 use crate::repo::{load_station, new_id};
 
 pub const MAX_NAME_CHARS: usize = 40;
@@ -12,6 +13,8 @@ pub const MAX_CONTROLLERS: i64 = 8;
 pub const MAX_HOURLY_RATE: i64 = 100_000_000;
 pub const ROUNDING_UNITS: [i64; 6] = [0, 100, 500, 1_000, 5_000, 10_000];
 pub const SOUND_PRESETS: [&str; 3] = ["chime", "bell", "beep"];
+pub const MAX_PRODUCT_PRICE: i64 = 100_000_000;
+pub const MAX_STOCK: i64 = 1_000_000;
 
 fn clean_name(raw: &str, what: &str) -> AppResult<String> {
     let name = raw.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -182,6 +185,167 @@ pub fn update_rate_plan(conn: &Connection, id: &str, input: &RatePlanInput, now:
     write_tiers(conn, id, &tiers)
 }
 
+// ---- buffet items ----------------------------------------------------------------
+
+fn validate_product(conn: &Connection, input: &ProductInput, current_id: Option<&str>) -> AppResult<String> {
+    let name = clean_name(&input.name, "نام کالا")?;
+    let taken: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM products WHERE name = ?1 AND id IS NOT ?2)",
+        params![name, current_id],
+        |r| r.get(0),
+    )?;
+    if taken {
+        return Err(validation("کالایی با این نام وجود دارد."));
+    }
+    if let Some(category) = input.category_id {
+        ensure_category(conn, category)?;
+    }
+    if !(0..=MAX_PRODUCT_PRICE).contains(&input.price) {
+        return Err(validation("قیمت نامعتبر است."));
+    }
+    if let Some(stock) = input.stock_quantity
+        && !(0..=MAX_STOCK).contains(&stock)
+    {
+        return Err(validation("موجودی نمی‌تواند منفی باشد."));
+    }
+    Ok(name)
+}
+
+pub fn create_product(conn: &Connection, input: &ProductInput, now: i64) -> AppResult<String> {
+    let name = validate_product(conn, input, None)?;
+    let sort_order: i64 =
+        conn.query_row("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM products", [], |r| r.get(0))?;
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO products (id, name, category_id, price, active, sort_order, stock_quantity, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+        params![id, name, input.category_id, input.price, input.active, sort_order, input.stock_quantity, now],
+    )?;
+    Ok(id)
+}
+
+/// Price changes affect new orders only (lines snapshot their price). The stock
+/// value is a count of what is on hand now (stocktake), `None` stops counting.
+pub fn update_product(conn: &Connection, id: &str, input: &ProductInput, now: i64) -> AppResult<()> {
+    let name = validate_product(conn, input, Some(id))?;
+    let updated = conn.execute(
+        "UPDATE products SET name = ?2, category_id = ?3, price = ?4, active = ?5, stock_quantity = ?6, updated_at = ?7
+         WHERE id = ?1",
+        params![id, name, input.category_id, input.price, input.active, input.stock_quantity, now],
+    )?;
+    if updated == 0 {
+        return Err(not_found("کالا پیدا نشد."));
+    }
+    Ok(())
+}
+
+// ---- categories --------------------------------------------------------------
+
+/// `#abc` / `#AABBCC` → `#aabbcc`; anything else is rejected.
+pub fn normalize_hex(raw: &str, what: &str) -> AppResult<String> {
+    let value = raw.trim().to_ascii_lowercase();
+    let digits = value.strip_prefix('#').unwrap_or("");
+    let expanded = match digits.len() {
+        3 => digits.chars().flat_map(|c| [c, c]).collect::<String>(),
+        6 => digits.to_owned(),
+        _ => String::new(),
+    };
+    if expanded.len() != 6 || !expanded.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(validation(format!("{what} باید یک کد رنگ مانند ‎#d4af37‎ باشد.")));
+    }
+    Ok(format!("#{expanded}"))
+}
+
+fn ensure_category(conn: &Connection, id: i64) -> AppResult<()> {
+    let exists: bool =
+        conn.query_row("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ?1)", [id], |r| r.get(0))?;
+    if exists { Ok(()) } else { Err(validation("دسته‌ی انتخاب‌شده وجود ندارد.")) }
+}
+
+fn validate_category(
+    conn: &Connection,
+    input: &CategoryInput,
+    current_id: Option<i64>,
+) -> AppResult<(String, String)> {
+    let name = clean_name(&input.name, "نام دسته")?;
+    let taken: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM categories WHERE name = ?1 AND id IS NOT ?2)",
+        params![name, current_id],
+        |r| r.get(0),
+    )?;
+    if taken {
+        return Err(validation("دسته‌ای با این نام وجود دارد."));
+    }
+    Ok((name, normalize_hex(&input.color, "رنگ دسته")?))
+}
+
+pub fn create_category(conn: &Connection, input: &CategoryInput) -> AppResult<i64> {
+    let (name, color) = validate_category(conn, input, None)?;
+    conn.execute("INSERT INTO categories (name, color) VALUES (?1, ?2)", params![name, color])?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn update_category(conn: &Connection, id: i64, input: &CategoryInput) -> AppResult<()> {
+    let (name, color) = validate_category(conn, input, Some(id))?;
+    let updated =
+        conn.execute("UPDATE categories SET name = ?2, color = ?3 WHERE id = ?1", params![id, name, color])?;
+    if updated == 0 {
+        return Err(not_found("دسته پیدا نشد."));
+    }
+    Ok(())
+}
+
+/// Delete a category, first moving its products to `reassign_to` (or leaving
+/// them uncategorised). Runs in the caller's transaction: all or nothing.
+pub fn delete_category(conn: &Connection, id: i64, reassign_to: Option<i64>, now: i64) -> AppResult<usize> {
+    let exists: bool =
+        conn.query_row("SELECT EXISTS (SELECT 1 FROM categories WHERE id = ?1)", [id], |r| r.get(0))?;
+    if !exists {
+        return Err(not_found("دسته پیدا نشد."));
+    }
+    if let Some(target) = reassign_to {
+        if target == id {
+            return Err(validation("دسته‌ی جایگزین باید با دسته‌ی حذف‌شده فرق داشته باشد."));
+        }
+        ensure_category(conn, target)?;
+    }
+    let moved = conn.execute(
+        "UPDATE products SET category_id = ?2, updated_at = ?3 WHERE category_id = ?1",
+        params![id, reassign_to, now],
+    )?;
+    conn.execute("DELETE FROM categories WHERE id = ?1", [id])?;
+    Ok(moved)
+}
+
+/// Move several products into one category (`None` = uncategorised) atomically:
+/// if any product id is unknown, nothing changes.
+pub fn assign_products_category(
+    conn: &Connection,
+    product_ids: &[String],
+    category_id: Option<i64>,
+    now: i64,
+) -> AppResult<usize> {
+    if product_ids.is_empty() {
+        return Err(validation("هیچ کالایی انتخاب نشده است."));
+    }
+    if let Some(category) = category_id {
+        ensure_category(conn, category)?;
+    }
+    let mut ids: Vec<&String> = product_ids.iter().collect();
+    ids.sort();
+    ids.dedup();
+    for id in &ids {
+        let updated = conn.execute(
+            "UPDATE products SET category_id = ?2, updated_at = ?3 WHERE id = ?1",
+            params![id, category_id, now],
+        )?;
+        if updated == 0 {
+            return Err(not_found("یکی از کالاهای انتخاب‌شده پیدا نشد؛ هیچ تغییری ذخیره نشد."));
+        }
+    }
+    Ok(ids.len())
+}
+
 fn validate_text(raw: &str, max: usize, what: &str) -> AppResult<String> {
     let text = raw.trim().replace("\r\n", "\n");
     if text.chars().count() > max {
@@ -208,10 +372,13 @@ pub fn update_settings(conn: &Connection, input: &SettingsInput, now: i64) -> Ap
             return Err(validation("زمان هشدار باید بین ۰ تا ۱۴۴۰ دقیقه باشد."));
         }
     }
+    let brand_color = normalize_hex(&input.brand_color, "رنگ برند")?;
+    let logo_path = logo::validate_logo_path(&input.logo_path)?;
     conn.execute(
         "UPDATE settings SET store_name = ?1, receipt_header = ?2, receipt_footer = ?3, rounding_unit = ?4,
             rounding_mode = ?5, sound_enabled = ?6, sound_preset = ?7, sound_volume = ?8,
-            alert_every_minutes = ?9, long_pause_minutes = ?10, updated_at = ?11
+            alert_every_minutes = ?9, long_pause_minutes = ?10, updated_at = ?11,
+            brand_color = ?12, logo_path = ?13
          WHERE id = 1",
         params![
             store_name,
@@ -225,6 +392,8 @@ pub fn update_settings(conn: &Connection, input: &SettingsInput, now: i64) -> Ap
             input.alert_every_minutes,
             input.long_pause_minutes,
             now,
+            brand_color,
+            logo_path,
         ],
     )?;
     Ok(())

@@ -6,8 +6,8 @@ interface StatTileProps {
   label: string
   value: string
   hint?: string
-  /** `gold` for monetary values. */
-  tone?: 'default' | 'gold'
+  /** `brand` for monetary values. */
+  tone?: 'default' | 'brand'
 }
 
 export function StatTile({ icon: Icon, label, value, hint, tone = 'default' }: StatTileProps) {
@@ -16,7 +16,7 @@ export function StatTile({ icon: Icon, label, value, hint, tone = 'default' }: S
       <div
         className={cn(
           'grid size-10 shrink-0 place-items-center rounded-xl',
-          tone === 'gold' ? 'bg-gold/12 text-gold' : 'bg-white/[0.06] text-label-secondary',
+          tone === 'brand' ? 'bg-brand/12 text-brand' : 'bg-white/[0.06] text-label-secondary',
         )}
       >
         <Icon className="size-[18px]" strokeWidth={1.8} />
@@ -26,7 +26,7 @@ export function StatTile({ icon: Icon, label, value, hint, tone = 'default' }: S
         <p
           className={cn(
             'mt-0.5 truncate text-lg leading-tight font-semibold tracking-tight tabular-nums',
-            tone === 'gold' && 'text-gold',
+            tone === 'brand' && 'text-brand',
           )}
         >
           {value}

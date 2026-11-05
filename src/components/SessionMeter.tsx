@@ -51,7 +51,7 @@ export function MeterView({ duration, startedAt, buffet, total, tone, aside }: M
         <span
           className={cn(
             'text-base font-semibold tabular-nums',
-            tone === 'idle' ? 'text-label-tertiary' : 'text-gold',
+            tone === 'idle' ? 'text-label-tertiary' : 'text-brand',
           )}
         >
           {total}

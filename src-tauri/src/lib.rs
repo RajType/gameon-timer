@@ -13,6 +13,7 @@ pub mod db;
 pub mod error;
 pub mod fa;
 pub mod legacy;
+pub mod logo;
 pub mod models;
 pub mod repo;
 pub mod seed;
@@ -48,6 +49,16 @@ pub fn run() {
             commands::set_session_controllers,
             commands::add_order_item,
             commands::remove_order_item,
+            commands::list_buffet_items,
+            commands::create_product,
+            commands::update_product,
+            commands::list_categories,
+            commands::create_category,
+            commands::update_category,
+            commands::delete_category,
+            commands::assign_products_category,
+            commands::pick_logo_file,
+            commands::read_logo,
             commands::preview_checkout,
             commands::checkout,
             commands::day_summary,

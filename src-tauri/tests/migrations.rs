@@ -102,23 +102,21 @@ fn migration_versions_are_strictly_increasing() {
 
 /// A v1 database (first SQLite release) seeded with data, as found on a store PC.
 fn v1_store(dir: &std::path::Path) {
-    let (mut conn, _) = open_store_with(dir, &MIGRATIONS[..1]).unwrap();
-    let tx = conn.transaction().unwrap();
-    gameon_timer_lib::seed::seed_defaults(&tx, T0).unwrap();
-    tx.commit().unwrap();
+    let (conn, _) = open_store_with(dir, &MIGRATIONS[..1]).unwrap();
+    seed_like_v1(&conn);
     assert_eq!(version(&conn), 1);
 }
 
 #[test]
-fn real_upgrade_v1_to_v2_adds_station_positions() {
+fn real_upgrade_from_v1_applies_every_later_migration() {
     let dir = temp();
     v1_store(dir.path());
 
     let (conn, info) = gameon_timer_lib::state::open_store(dir.path()).unwrap();
     assert_eq!(info.migrated_from, Some(1));
-    assert_eq!(info.applied_migrations, vec![2]);
+    assert_eq!(info.applied_migrations, (2..=db::latest_version()).collect::<Vec<_>>());
     assert!(info.pre_migration_backup.is_some(), "backup taken before the upgrade");
-    assert_eq!(version(&conn), 2);
+    assert_eq!(version(&conn), db::latest_version());
 
     let stations = gameon_timer_lib::repo::load_stations(&conn).unwrap();
     assert_eq!(stations.len(), 10, "existing stations kept");
@@ -138,6 +136,6 @@ fn restoring_a_v1_backup_upgrades_it() {
     let dir = temp();
     let (mut conn, _) = seeded(dir.path());
     gameon_timer_lib::backup::restore(&mut conn, &file, &dir.path().join("backups"), T0).unwrap();
-    assert_eq!(version(&conn), 2);
+    assert_eq!(version(&conn), db::latest_version());
     assert_eq!(gameon_timer_lib::repo::load_floor(&conn).unwrap().stations.len(), 10);
 }

@@ -28,6 +28,12 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "add station positions",
         sql: include_str!("../migrations/0002_add_station_positions.sql"),
     },
+    Migration { version: 3, name: "buffet stock", sql: include_str!("../migrations/0003_buffet_stock.sql") },
+    Migration {
+        version: 4,
+        name: "branding and categories",
+        sql: include_str!("../migrations/0004_branding_categories.sql"),
+    },
 ];
 
 pub fn latest_version() -> i64 {
