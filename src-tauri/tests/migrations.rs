@@ -102,10 +102,8 @@ fn migration_versions_are_strictly_increasing() {
 
 /// A v1 database (first SQLite release) seeded with data, as found on a store PC.
 fn v1_store(dir: &std::path::Path) {
-    let (mut conn, _) = open_store_with(dir, &MIGRATIONS[..1]).unwrap();
-    let tx = conn.transaction().unwrap();
-    gameon_timer_lib::seed::seed_defaults(&tx, T0).unwrap();
-    tx.commit().unwrap();
+    let (conn, _) = open_store_with(dir, &MIGRATIONS[..1]).unwrap();
+    seed_like_v1(&conn);
     assert_eq!(version(&conn), 1);
 }
 

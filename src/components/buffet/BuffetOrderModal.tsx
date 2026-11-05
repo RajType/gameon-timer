@@ -73,7 +73,7 @@ export function BuffetOrderModal({ product, onClose }: { product: Product; onClo
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between rounded-xl bg-white/[0.04] px-3 py-2.5 text-[13px]">
-          <span className="text-gold tabular-nums">{formatToman(item.price)}</span>
+          <span className="text-brand tabular-nums">{formatToman(item.price)}</span>
           <span className="text-label-secondary">موجودی: {stockLabel(item)}</span>
         </div>
 
@@ -113,7 +113,7 @@ export function BuffetOrderModal({ product, onClose }: { product: Product; onClo
 
         <div className="flex items-baseline justify-between border-t border-separator pt-3">
           <span className="text-sm font-medium">جمع</span>
-          <span data-testid="order-total" className="text-xl font-bold text-gold tabular-nums">
+          <span data-testid="order-total" className="text-xl font-bold text-brand tabular-nums">
             {formatToman(item.price * quantity)}
           </span>
         </div>

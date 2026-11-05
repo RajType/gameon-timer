@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApiMock } from '@/test/mockApi'
-import { products, ratePlans, runningSession, settings, stations } from '@/test/fixtures'
+import { categories, products, ratePlans, runningSession, settings, stations } from '@/test/fixtures'
 import { installResizeObserver } from '@/test/resizeObserver'
 import type { Bootstrap } from '@/types'
 
@@ -19,7 +19,7 @@ const { useUiStore } = await import('@/store/uiStore')
 const boot: Bootstrap = {
   initialized: true,
   floor: { stations: stations(), sessions: [runningSession()] },
-  catalog: { ratePlans, products },
+  catalog: { ratePlans, products, categories },
   settings,
   legacy: { status: 'none', hash: null, summary: null, error: null },
 }
@@ -36,6 +36,24 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+})
+
+describe('dynamic branding at startup', () => {
+  it('applies the stored brand colour and shows the store name and logo', async () => {
+    mock.current!.api.bootstrap!.mockResolvedValue({
+      ...boot,
+      settings: { ...settings, brandColor: '#0a84ff', storeName: 'گیم‌نت آریا', logoPath: '/srv/logo.png' },
+    })
+    mock.current!.api.readLogo!.mockResolvedValue('data:image/png;base64,AAAA')
+    render(<App />)
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--brand-color')).toBe('#0a84ff'))
+    expect(document.documentElement.style.getPropertyValue('--brand-contrast')).toBe('#000000')
+    expect(await screen.findByText('گیم‌نت آریا')).toBeTruthy()
+    await waitFor(() => expect(mock.current!.calls.readLogo).toHaveBeenCalledWith('/srv/logo.png'))
+    await waitFor(() =>
+      expect(document.querySelector('aside img')?.getAttribute('src')).toBe('data:image/png;base64,AAAA'),
+    )
+  })
 })
 
 describe('app shell navigation', () => {

@@ -21,4 +21,8 @@ export interface Settings {
   alertEveryMinutes: number
   /** Alert once when a session stays paused this long (0 = off). */
   longPauseMinutes: number
+  /** Lowercase `#rrggbb`; becomes `--brand-color`. */
+  brandColor: string
+  /** Absolute path of the logo image, `''` = none. */
+  logoPath: string
 }

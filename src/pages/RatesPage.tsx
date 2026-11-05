@@ -45,7 +45,7 @@ export function RatesPage() {
               {plan.tiers.map((tier) => (
                 <div key={tier.controllers} className="flex items-baseline justify-between px-3 py-2 text-[13px]">
                   <dt className="text-label-secondary">{toPersianDigits(tier.controllers)} دسته</dt>
-                  <dd className="font-medium text-gold tabular-nums">
+                  <dd className="font-medium text-brand tabular-nums">
                     {formatNumber(tier.hourlyRate)} <span className="text-xs text-label-tertiary">تومان / ساعت</span>
                   </dd>
                 </div>

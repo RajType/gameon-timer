@@ -19,22 +19,24 @@ pub const DEFAULT_PLANS: [PlanSeed; 4] = [
 ];
 
 /// Same ids as the legacy (localStorage) menu so imported orders still match.
+/// The third field is a default category name (created by migration 0004).
 pub const DEFAULT_PRODUCTS: [(&str, &str, &str, i64); 8] = [
-    ("water", "آب معدنی", "drink", 10_000),
-    ("soda", "نوشابه", "drink", 25_000),
-    ("energy", "نوشیدنی انرژی‌زا", "drink", 60_000),
-    ("coffee", "قهوه", "drink", 45_000),
-    ("chips", "چیپس", "snack", 30_000),
-    ("puff", "پفک", "snack", 25_000),
-    ("cake", "کیک", "snack", 20_000),
-    ("sandwich", "ساندویچ", "food", 120_000),
+    ("water", "آب معدنی", "نوشیدنی", 10_000),
+    ("soda", "نوشابه", "نوشیدنی", 25_000),
+    ("energy", "نوشیدنی انرژی‌زا", "نوشیدنی", 60_000),
+    ("coffee", "قهوه", "نوشیدنی", 45_000),
+    ("chips", "چیپس", "تنقلات", 30_000),
+    ("puff", "پفک", "تنقلات", 25_000),
+    ("cake", "کیک", "تنقلات", 20_000),
+    ("sandwich", "ساندویچ", "غذا", 120_000),
 ];
 
 pub fn insert_products(conn: &Connection, now: i64) -> AppResult<()> {
     for (i, (id, name, category, price)) in DEFAULT_PRODUCTS.iter().enumerate() {
         conn.execute(
-            "INSERT OR IGNORE INTO products (id, name, category, price, active, sort_order, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?6)",
+            // A missing default category just leaves the item uncategorised.
+            "INSERT OR IGNORE INTO products (id, name, category_id, price, active, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, (SELECT id FROM categories WHERE name = ?3), ?4, 1, ?5, ?6, ?6)",
             params![id, name, category, price, i as i64, now],
         )?;
     }

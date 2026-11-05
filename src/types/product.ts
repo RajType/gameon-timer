@@ -1,10 +1,23 @@
-export type ProductCategory = 'drink' | 'snack' | 'food'
+/** Product category (migration 0004). */
+export interface Category {
+  id: number
+  name: string
+  /** Lowercase `#rrggbb`. */
+  color: string
+  productCount: number
+}
+
+export interface CategoryInput {
+  name: string
+  color: string
+}
 
 /** A buffet menu item. */
 export interface Product {
   id: string
   name: string
-  category: ProductCategory
+  /** `null` = uncategorised (fully usable). */
+  categoryId: number | null
   /** Current unit price in Toman. */
   price: number
   active: boolean
@@ -15,7 +28,7 @@ export interface Product {
 
 export interface ProductInput {
   name: string
-  category: ProductCategory
+  categoryId: number | null
   price: number
   active: boolean
   /** `null` = do not count stock for this item. */

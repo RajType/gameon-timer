@@ -11,7 +11,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const VARIANT: Record<Variant, string> = {
   // Gold = the one action that moves money or the session forward.
-  primary: 'bg-gold text-black shadow-gold hover:bg-gold-400 active:bg-gold-600',
+  primary: 'bg-brand text-brand-contrast shadow-brand hover:bg-brand-400 active:bg-brand-600',
   secondary: 'bg-white/[0.08] text-label hover:bg-white/[0.13] active:bg-white/[0.06]',
   ghost: 'text-label-secondary hover:bg-white/[0.07] hover:text-label',
 }

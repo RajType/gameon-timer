@@ -13,9 +13,10 @@ use crate::backup::{self, BackupInfo, RestoreReport};
 use crate::bootstrap::{self, Bootstrap};
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::logo;
 use crate::models::{
-    Catalog, DaySummary, Floor, Invoice, Product, ProductInput, RatePlanInput, Settings, SettingsInput,
-    StationInput,
+    Catalog, Category, CategoryInput, DaySummary, Floor, Invoice, Product, ProductInput, RatePlanInput,
+    Settings, SettingsInput, StationInput,
 };
 use crate::repo::{self, now_ms};
 use crate::state::{AppState, StartupInfo};
@@ -155,12 +156,30 @@ pub async fn list_buffet_items(
     with_conn(&state, |conn| repo::load_products(conn, available_only.unwrap_or(false)))
 }
 
-#[tauri::command]
-pub async fn create_product(state: State<'_, AppState>, input: ProductInput) -> AppResult<Vec<Product>> {
-    write(&state, |tx| {
-        admin::create_product(tx, &input, now_ms())?;
-        repo::load_products(tx, false)
+/// Buffet items together with categories (product counts change with assignments).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuffetCatalog {
+    pub products: Vec<Product>,
+    pub categories: Vec<Category>,
+}
+
+fn write_buffet(
+    state: &AppState,
+    f: impl FnOnce(&Transaction<'_>) -> AppResult<()>,
+) -> AppResult<BuffetCatalog> {
+    write(state, |tx| {
+        f(tx)?;
+        Ok(BuffetCatalog {
+            products: repo::load_products(tx, false)?,
+            categories: repo::load_categories(tx)?,
+        })
     })
+}
+
+#[tauri::command]
+pub async fn create_product(state: State<'_, AppState>, input: ProductInput) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::create_product(tx, &input, now_ms()).map(|_| ()))
 }
 
 #[tauri::command]
@@ -168,11 +187,77 @@ pub async fn update_product(
     state: State<'_, AppState>,
     id: String,
     input: ProductInput,
-) -> AppResult<Vec<Product>> {
-    write(&state, |tx| {
-        admin::update_product(tx, &id, &input, now_ms())?;
-        repo::load_products(tx, false)
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::update_product(tx, &id, &input, now_ms()))
+}
+
+// ---- categories --------------------------------------------------------------
+
+#[tauri::command]
+pub async fn list_categories(state: State<'_, AppState>) -> AppResult<Vec<Category>> {
+    with_conn(&state, |conn| repo::load_categories(conn))
+}
+
+#[tauri::command]
+pub async fn create_category(state: State<'_, AppState>, input: CategoryInput) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::create_category(tx, &input).map(|_| ()))
+}
+
+#[tauri::command]
+pub async fn update_category(
+    state: State<'_, AppState>,
+    id: i64,
+    input: CategoryInput,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::update_category(tx, id, &input))
+}
+
+/// Delete a category; its products move to `reassign_to` (or become
+/// uncategorised) in the same transaction.
+#[tauri::command]
+pub async fn delete_category(
+    state: State<'_, AppState>,
+    id: i64,
+    reassign_to: Option<i64>,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| admin::delete_category(tx, id, reassign_to, now_ms()).map(|_| ()))
+}
+
+/// Re-categorise several products at once — all of them or none.
+#[tauri::command]
+pub async fn assign_products_category(
+    state: State<'_, AppState>,
+    product_ids: Vec<String>,
+    category_id: Option<i64>,
+) -> AppResult<BuffetCatalog> {
+    write_buffet(&state, |tx| {
+        admin::assign_products_category(tx, &product_ids, category_id, now_ms()).map(|_| ())
     })
+}
+
+// ---- logo ----------------------------------------------------------------------
+
+/// Open dialog for an image; returns its (validated) absolute path, `None` if
+/// cancelled. Nothing is saved until settings are saved.
+#[tauri::command]
+pub async fn pick_logo_file(app: AppHandle) -> AppResult<Option<String>> {
+    let Some(choice) = app
+        .dialog()
+        .file()
+        .set_title("انتخاب لوگو")
+        .add_filter("تصویر", &logo::LOGO_EXTENSIONS)
+        .blocking_pick_file()
+    else {
+        return Ok(None);
+    };
+    let path = choice.into_path().map_err(|e| AppError::Internal(e.to_string()))?;
+    logo::validate_logo_path(&path.to_string_lossy()).map(Some)
+}
+
+/// The logo at `path` as a `data:` URL (for the sidebar and receipt preview).
+#[tauri::command]
+pub async fn read_logo(path: String) -> AppResult<String> {
+    logo::read_logo_data_url(&path)
 }
 
 #[tauri::command]

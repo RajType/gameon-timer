@@ -1,5 +1,5 @@
 import type { Invoice } from './invoice'
-import type { Product } from './product'
+import type { Category, Product } from './product'
 import type { RatePlan, RateTier } from './rates'
 import type { Session } from './session'
 import type { Settings } from './settings'
@@ -14,6 +14,13 @@ export interface Floor {
 export interface Catalog {
   ratePlans: RatePlan[]
   products: Product[]
+  categories: Category[]
+}
+
+/** Products and categories after a buffet admin change (counts move together). */
+export interface BuffetCatalog {
+  products: Product[]
+  categories: Category[]
 }
 
 export interface Snapshot {

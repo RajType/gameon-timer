@@ -9,8 +9,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::billing;
 use crate::error::{AppError, AppResult, conflict, not_found, validation};
 use crate::models::{
-    Catalog, DaySummary, Floor, Invoice, InvoiceLine, LineKind, OrderItem, Product, RatePlan, RateTier,
-    RoundingMode, Segment, Session, Settings, Station, StationKind,
+    Catalog, Category, DaySummary, Floor, Invoice, InvoiceLine, LineKind, OrderItem, Product, RatePlan,
+    RateTier, RoundingMode, Segment, Session, Settings, Station, StationKind,
 };
 
 /// Clock skew tolerated between the UI's "checkout pressed" time and now.
@@ -81,7 +81,8 @@ pub fn load_station(conn: &Connection, id: &str) -> AppResult<Station> {
 pub fn load_settings(conn: &Connection) -> AppResult<Settings> {
     Ok(conn.query_row(
         "SELECT store_name, receipt_header, receipt_footer, rounding_unit, rounding_mode,
-                sound_enabled, sound_preset, sound_volume, alert_every_minutes, long_pause_minutes
+                sound_enabled, sound_preset, sound_volume, alert_every_minutes, long_pause_minutes,
+                brand_color, logo_path
          FROM settings WHERE id = 1",
         [],
         |r| {
@@ -97,6 +98,8 @@ pub fn load_settings(conn: &Connection) -> AppResult<Settings> {
                 sound_volume: r.get(7)?,
                 alert_every_minutes: r.get(8)?,
                 long_pause_minutes: r.get(9)?,
+                brand_color: r.get(10)?,
+                logo_path: r.get(11)?,
             })
         },
     )?)
@@ -126,7 +129,19 @@ pub fn load_catalog(conn: &Connection) -> AppResult<Catalog> {
         })
         .collect::<AppResult<Vec<_>>>()?;
 
-    Ok(Catalog { rate_plans, products: load_products(conn, false)? })
+    Ok(Catalog { rate_plans, products: load_products(conn, false)?, categories: load_categories(conn)? })
+}
+
+/// Categories in creation order, with how many products each holds.
+pub fn load_categories(conn: &Connection) -> AppResult<Vec<Category>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.name, c.color, (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id)
+         FROM categories c ORDER BY c.id",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Category { id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, product_count: r.get(3)? })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }
 
 /// Buffet items. `available_only`: active and (not counted, or in stock).
@@ -137,7 +152,7 @@ pub fn load_products(conn: &Connection, available_only: bool) -> AppResult<Vec<P
         ""
     };
     let mut stmt = conn.prepare(&format!(
-        "SELECT id, name, category, price, active, sort_order, stock_quantity FROM products {filter}
+        "SELECT id, name, category_id, price, active, sort_order, stock_quantity FROM products {filter}
          ORDER BY sort_order, name"
     ))?;
     let products = stmt
@@ -145,7 +160,7 @@ pub fn load_products(conn: &Connection, available_only: bool) -> AppResult<Vec<P
             Ok(Product {
                 id: r.get(0)?,
                 name: r.get(1)?,
-                category: r.get(2)?,
+                category_id: r.get(2)?,
                 price: r.get(3)?,
                 active: r.get(4)?,
                 sort_order: r.get(5)?,

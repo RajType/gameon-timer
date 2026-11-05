@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/lib/api'
 import { createApiMock } from '@/test/mockApi'
-import { deferred, invoiceFor, products, ratePlans, runningSession, settings, stations, T0 } from '@/test/fixtures'
+import { categories, deferred, invoiceFor, products, ratePlans, runningSession, settings, stations, T0 } from '@/test/fixtures'
 import { installResizeObserver } from '@/test/resizeObserver'
 import type { Invoice, OrderResult, Product } from '@/types'
 
@@ -31,7 +31,7 @@ beforeEach(() => {
   api().reset()
   installResizeObserver(1200)
   useStationStore.setState({ stations: stations(), sessions: { 'station-1': runningSession() }, pending: {} })
-  useSettingsStore.setState({ settings, ratePlans, products })
+  useSettingsStore.setState({ settings, ratePlans, products, categories })
   useUiStore.setState({ checkout: null, toasts: [] })
 })
 
@@ -117,9 +117,59 @@ describe('buffet page', () => {
   })
 })
 
+describe('categories on the buffet page', () => {
+  const chips = () => screen.getByRole('radiogroup', { name: 'فیلتر دسته' })
+  const shown = () => [...document.querySelectorAll('[data-product-id]')].map((r) => r.getAttribute('data-product-id'))
+
+  it('filters by category, with an uncategorised view for items without one', () => {
+    render(<BuffetPage />)
+    expect(shown()).toEqual(['soda', 'coffee', 'cake', 'old'])
+    expect(chips().textContent).toContain('همه۴')
+    expect(chips().textContent).toContain('بدون دسته۱')
+    fireEvent.click(within(chips()).getByRole('radio', { name: /نوشیدنی/ }))
+    expect(shown()).toEqual(['soda', 'coffee'])
+    fireEvent.click(within(chips()).getByRole('radio', { name: /بدون دسته/ }))
+    expect(shown()).toEqual(['old'])
+    expect(row('old').textContent).toContain('بدون دسته')
+  })
+
+  it('falls back to all items when the filtered category disappears', () => {
+    render(<BuffetPage />)
+    fireEvent.click(within(chips()).getByRole('radio', { name: /تنقلات/ }))
+    expect(shown()).toEqual(['cake'])
+    act(() => useSettingsStore.setState({ categories: categories.filter((c) => c.id !== 2) }))
+    expect(shown()).toHaveLength(4)
+  })
+
+  it('re-categorises selected items in one request', async () => {
+    const moved = products.map((p) => (p.id === 'soda' || p.id === 'old' ? { ...p, categoryId: 2 } : p))
+    api().api.assignProductsCategory!.mockResolvedValue({ products: moved, categories })
+    render(<BuffetPage />)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'انتخاب نوشابه' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'انتخاب کالای قدیمی' }))
+    const bar = screen.getByRole('toolbar', { name: /تغییر دسته/ })
+    expect(bar.textContent).toContain('۲ کالا انتخاب شده')
+    fireEvent.change(within(bar).getByLabelText('انتقال به'), { target: { value: '2' } })
+    fireEvent.click(within(bar).getByRole('button', { name: /اعمال/ }))
+    await waitFor(() => expect(api().calls.assignProductsCategory).toHaveBeenCalledTimes(1))
+    expect(api().calls.assignProductsCategory).toHaveBeenCalledWith(['soda', 'old'], 2)
+    await waitFor(() => expect(screen.queryByRole('toolbar')).toBeNull()) // selection cleared
+    expect(row('old').textContent).toContain('تنقلات')
+  })
+
+  it('a new item defaults to the active category filter', async () => {
+    api().api.createProduct!.mockResolvedValue({ products, categories })
+    render(<BuffetPage />)
+    fireEvent.click(within(chips()).getByRole('radio', { name: /تنقلات/ }))
+    fireEvent.click(screen.getByRole('button', { name: /کالای جدید/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect((within(dialog).getByLabelText('دسته') as HTMLSelectElement).value).toBe('2')
+  })
+})
+
 describe('product form', () => {
   it('validates, then creates a counted item (Persian digits accepted)', async () => {
-    api().api.createProduct!.mockResolvedValue([...products])
+    api().api.createProduct!.mockResolvedValue({ products: [...products], categories })
     render(<BuffetPage />)
     fireEvent.click(screen.getByRole('button', { name: /کالای جدید/ }))
     const dialog = await screen.findByRole('dialog')
@@ -134,7 +184,7 @@ describe('product form', () => {
     await waitFor(() => expect(api().calls.createProduct).toHaveBeenCalledTimes(1))
     expect(api().calls.createProduct).toHaveBeenCalledWith({
       name: 'آبمیوه',
-      category: 'drink',
+      categoryId: null,
       price: 35_000,
       active: true,
       stockQuantity: 12,
@@ -142,7 +192,7 @@ describe('product form', () => {
   })
 
   it('edits an item and can stop counting its stock', async () => {
-    api().api.updateProduct!.mockResolvedValue(withStock('soda', null))
+    api().api.updateProduct!.mockResolvedValue({ products: withStock('soda', null), categories })
     render(<BuffetPage />)
     fireEvent.click(within(row('soda')).getByRole('button', { name: /ویرایش/ }))
     const dialog = await screen.findByRole('dialog')

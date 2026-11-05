@@ -49,9 +49,9 @@ export function ControllerPicker({ session }: { session: Session }) {
                     active && 'text-label',
                   )}
                 >
-                  <Check className={cn('size-3.5 text-gold', !active && 'invisible')} />
+                  <Check className={cn('size-3.5 text-brand', !active && 'invisible')} />
                   <span className="tabular-nums">{toPersianDigits(tier.controllers)} دسته</span>
-                  <span className="ms-auto text-xs text-gold tabular-nums">{formatToman(tier.hourlyRate)}</span>
+                  <span className="ms-auto text-xs text-brand tabular-nums">{formatToman(tier.hourlyRate)}</span>
                 </button>
               </li>
             )

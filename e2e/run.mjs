@@ -583,7 +583,7 @@ try {
     const productRow = (id) => `tr[data-product-id="${id}"]`
     const rowText = (id) => d.exec(`return document.querySelector(arguments[0])?.innerText ?? ''`, productRow(id))
     const rowByName = (name) =>
-      d.exec(`return [...document.querySelectorAll('tr[data-product-id]')].find(r => r.cells[0].innerText.trim() === arguments[0])?.innerText ?? ''`, name)
+      d.exec(`return [...document.querySelectorAll('tr[data-product-id]')].find(r => r.cells[1].innerText.trim() === arguments[0])?.innerText ?? ''`, name)
     await nav('بوفه')
     await d.waitFor(async () => (await rowText('soda')).includes('بدون شمارش'), { message: 'buffet list, soda not counted yet' })
 
@@ -641,6 +641,104 @@ try {
     await nav('بوفه')
     await d.waitFor(async () => (await rowText('soda')).includes('ناموجود'), { message: 'soda still sold out after restart' })
     assert((await rowByName('آبمیوه')).includes('۵ عدد'), 'new item persisted')
+  })
+  await step('branding & categories: live brand colour, store name, logo, category CRUD, bulk move, filter; persisted', async () => {
+    const BLUE = '#0a84ff'
+    const NAME = `گیم${ZWNJ}نت آریا`
+    const HOT = 'نوشیدنی گرم'
+    const brandVar = () => d.exec(`return getComputedStyle(document.documentElement).getPropertyValue('--brand-color').trim()`)
+    const sidebar = () => d.exec(`return document.querySelector('aside').innerText`)
+    const shown = () => d.exec(`return [...document.querySelectorAll('tr[data-product-id]')].map(r => r.dataset.productId)`)
+    const categoryCell = (id) => d.exec(`return document.querySelector('tr[data-product-id="' + arguments[0] + '"]').cells[2].innerText.trim()`, id)
+    const chip = (label) => `//div[@aria-label='فیلتر دسته']//button[@role='radio'][contains(., '${label}')]`
+    // Result keys avoid `error`, which the driver would read as a WebDriver failure.
+    const invoke = (cmd, args) =>
+      d.execAsync(
+        `const done = arguments[arguments.length - 1];
+         window.__TAURI_INTERNALS__.invoke(arguments[0], arguments[1]).then((r) => done({ result: r }), (e) => done({ failure: e }));`,
+        cmd,
+        args ?? {},
+      )
+
+    // Brand colour: live preview while typing, applied app-wide on save.
+    assert((await brandVar()) === '#d4af37', `default brand colour (${await brandVar()})`)
+    await nav('تنظیمات')
+    await replaceText(await control('نام مجموعه', { inDialog: false }), NAME)
+    await replaceText(await control('رنگ برند', { inDialog: false }), '#0A84FF')
+    await d.waitFor(async () => (await brandVar()) === BLUE, { message: 'live brand preview' })
+    await clickX(`//button[contains(., 'ذخیره${ZWNJ}ی تغییرات')]`)
+    await toastSeen('تنظیمات ذخیره شد')
+    await d.waitFor(async () => (await sidebar()).includes(NAME), { message: 'store name in the sidebar' })
+
+    // Categories: add one; delete «غذا» moving its products to «تنقلات» in the same request.
+    await clickX(`//button[contains(., 'دسته${ZWNJ}ی جدید')]`)
+    await d.type(await control('نام'), HOT)
+    await replaceText(await control('رنگ'), '#ff9f0a')
+    await clickX(`//div[@role='dialog']//button[contains(., 'افزودن دسته')]`)
+    await toastSeen('دسته اضافه شد')
+    const hotId = await d.waitFor(
+      () => d.exec(`return [...document.querySelectorAll('[data-category-id]')].find(li => li.innerText.includes(arguments[0]))?.dataset.categoryId`, HOT),
+      { message: 'new category listed' },
+    )
+    await clickX(`//button[@aria-label='حذف غذا']`)
+    await selectOption(await control('انتقال کالاها به'), 2)
+    await clickX(`//div[@role='dialog']//button[contains(., 'حذف دسته')]`)
+    await toastSeen('دسته حذف شد')
+    await shot('15-settings-branding')
+
+    // Buffet: the primary button follows the brand; bulk re-categorise; filter.
+    await nav('بوفه')
+    const primary = await d.exec(`return getComputedStyle([...document.querySelectorAll('main button')].find(b => b.innerText.includes('کالای جدید'))).backgroundColor`)
+    assert(primary === 'rgb(10, 132, 255)', `primary button uses the brand colour (${primary})`)
+    assert((await categoryCell('sandwich')) === 'تنقلات', 'sandwich moved with its deleted category')
+    assert(!(await d.exec(`return document.querySelector('[aria-label="فیلتر دسته"]').innerText`)).includes('غذا'), 'deleted category gone from the filter')
+    await clickX(`//input[@aria-label='انتخاب آب معدنی']`)
+    await clickX(`//input[@aria-label='انتخاب قهوه']`)
+    await selectOption(await control('انتقال به', { inDialog: false }), hotId)
+    await clickX(`//div[@role='toolbar']//button[contains(., 'اعمال')]`)
+    await toastSeen(`دسته${ZWNJ}ی کالاها تغییر کرد`)
+    await clickX(`//input[@aria-label='انتخاب پفک']`)
+    await selectOption(await control('انتقال به', { inDialog: false }), 'none')
+    await clickX(`//div[@role='toolbar']//button[contains(., 'اعمال')]`)
+    await d.waitFor(async () => (await categoryCell('puff')) === 'بدون دسته', { message: 'puff uncategorised' })
+    await clickX(chip(HOT))
+    await d.waitFor(async () => JSON.stringify(await shown()) === '["water","coffee"]', { message: `filter by «${HOT}»` })
+    await clickX(chip('بدون دسته'))
+    // «آبمیوه» (added in the buffet step without a category) is listed here too.
+    await d.waitFor(async () => {
+      const ids = await shown()
+      if (!ids.includes('puff') || ids.length !== 2) return false
+      for (const id of ids) if ((await categoryCell(id)) !== 'بدون دسته') return false
+      return true
+    }, { message: 'uncategorised view' })
+    await shot('16-buffet-categories')
+
+    // An uncategorised item is still sold normally.
+    await clickX(`//tr[@data-product-id='puff']//button[starts-with(@aria-label, 'سفارش')]`)
+    await selectOption(await control('ایستگاه'), 'station-1')
+    await clickX(`//div[@role='dialog']//button[normalize-space()='ثبت سفارش']`)
+    await toastSeen('سفارش بوفه ثبت شد')
+
+    // Logo: the file dialog is native, so set the path through the same command it uses.
+    const logo = path.join(work, 'logo.png')
+    fs.writeFileSync(logo, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'))
+    const current = (await invoke('get_settings')).result
+    const relative = await invoke('update_settings', { input: { ...current, logoPath: 'logo.png' } })
+    assert(relative.failure?.code === 'validation', `relative logo path refused (${JSON.stringify(relative)})`)
+    const saved = await invoke('update_settings', { input: { ...current, logoPath: logo } })
+    assert(saved.result?.logoPath === logo, `absolute logo path stored (${JSON.stringify(saved)})`)
+
+    // Everything survives a restart; the cached brand is applied before the first render.
+    await launch(APP)
+    assert((await localStorageGet('gameon:brand-color')) === BLUE, 'brand colour cached for startup')
+    assert((await brandVar()) === BLUE, 'brand colour after restart')
+    assert((await sidebar()).includes(NAME), 'store name after restart')
+    await d.waitFor(() => d.exec(`return document.querySelector('aside img')?.getAttribute('src')?.startsWith('data:image/png;base64,')`), { message: 'sidebar logo' })
+    await nav('تنظیمات')
+    await d.waitFor(() => d.exec(`return !!document.querySelector('[aria-label="پیش${ZWNJ}نمایش رسید"] img')`), { message: 'logo on the receipt preview' })
+    await nav('بوفه')
+    assert((await categoryCell('water')) === HOT && (await categoryCell('puff')) === 'بدون دسته', 'categories after restart')
+    await shot('17-branded-after-restart')
   })
 } catch {
   // reported below

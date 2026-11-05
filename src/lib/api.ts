@@ -1,7 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   Bootstrap,
+  BuffetCatalog,
   Catalog,
+  Category,
+  CategoryInput,
   CheckoutResult,
   DataInfo,
   DaySummary,
@@ -69,8 +72,23 @@ export const api = {
   getCatalog: () => call<Catalog>('get_catalog'),
   /** `availableOnly`: active and in stock (or not counted). */
   listBuffetItems: (availableOnly = false) => call<Product[]>('list_buffet_items', { availableOnly }),
-  createProduct: (input: ProductInput) => call<Product[]>('create_product', { input }),
-  updateProduct: (id: string, input: ProductInput) => call<Product[]>('update_product', { id, input }),
+  createProduct: (input: ProductInput) => call<BuffetCatalog>('create_product', { input }),
+  updateProduct: (id: string, input: ProductInput) => call<BuffetCatalog>('update_product', { id, input }),
+
+  listCategories: () => call<Category[]>('list_categories'),
+  createCategory: (input: CategoryInput) => call<BuffetCatalog>('create_category', { input }),
+  updateCategory: (id: number, input: CategoryInput) => call<BuffetCatalog>('update_category', { id, input }),
+  /** Products move to `reassignTo` (or become uncategorised) in the same transaction. */
+  deleteCategory: (id: number, reassignTo: number | null) =>
+    call<BuffetCatalog>('delete_category', { id, reassignTo }),
+  /** All-or-nothing re-categorisation (`null` = uncategorised). */
+  assignProductsCategory: (productIds: string[], categoryId: number | null) =>
+    call<BuffetCatalog>('assign_products_category', { productIds, categoryId }),
+
+  /** Native open dialog; validated absolute path, `null` if cancelled. Saves nothing. */
+  pickLogoFile: () => call<string | null>('pick_logo_file'),
+  /** Logo image as a `data:` URL. */
+  readLogo: (path: string) => call<string>('read_logo', { path }),
   createStation: (input: StationInput) => call<Snapshot>('create_station', { input }),
   updateStation: (id: string, input: StationInput) => call<Snapshot>('update_station', { id, input }),
   setStationEnabled: (id: string, enabled: boolean) => call<Snapshot>('set_station_enabled', { id, enabled }),

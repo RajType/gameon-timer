@@ -1,4 +1,4 @@
-import type { Product, ProductCategory } from '@/types'
+import type { Category, Product } from '@/types'
 import { toPersianDigits } from './currency'
 
 /** Must match `repo::MAX_ORDER_QUANTITY` in Rust. */
@@ -6,12 +6,22 @@ export const MAX_ORDER_QUANTITY = 99
 /** At or below this many units a counted item is shown as running low. */
 export const LOW_STOCK = 5
 
-export const PRODUCT_CATEGORIES: readonly ProductCategory[] = ['drink', 'snack', 'food']
+export const UNCATEGORIZED_LABEL = 'بدون دسته'
+/** Neutral swatch for uncategorised items (matches --color-status-available). */
+export const UNCATEGORIZED_COLOR = 'var(--color-status-available)'
 
-export const PRODUCT_CATEGORY_LABEL: Record<ProductCategory, string> = {
-  drink: 'نوشیدنی',
-  snack: 'تنقلات',
-  food: 'غذا',
+/** Buffet list filter: everything, one category, or items without a category. */
+export type CategoryFilter = 'all' | 'none' | number
+
+export function filterByCategory<T extends Pick<Product, 'categoryId'>>(products: readonly T[], filter: CategoryFilter): T[] {
+  if (filter === 'all') return [...products]
+  if (filter === 'none') return products.filter((p) => p.categoryId === null)
+  return products.filter((p) => p.categoryId === filter)
+}
+
+/** The product's category, or `undefined` when uncategorised (or the id is stale). */
+export function categoryOf(product: Pick<Product, 'categoryId'>, categories: readonly Category[]): Category | undefined {
+  return product.categoryId === null ? undefined : categories.find((c) => c.id === product.categoryId)
 }
 
 export type StockLevel = 'uncounted' | 'out' | 'low' | 'ok'

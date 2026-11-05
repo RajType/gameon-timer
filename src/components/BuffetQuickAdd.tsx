@@ -62,7 +62,7 @@ export function BuffetQuickAdd({ stationId }: BuffetQuickAddProps) {
                   </span>
                 )}
               </span>
-              <span className="text-xs text-gold tabular-nums">{formatToman(item.price)}</span>
+              <span className="text-xs text-brand tabular-nums">{formatToman(item.price)}</span>
               {/* Fixed width keeps the price column aligned as controls appear. */}
               <div className="flex w-[4.5rem] items-center justify-end">
                 {quantity > 0 && (

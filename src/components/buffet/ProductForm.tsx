@@ -1,24 +1,32 @@
 import { useId, useState } from 'react'
 import { errorMessage } from '@/lib/api'
-import { PRODUCT_CATEGORIES, PRODUCT_CATEGORY_LABEL, validateProduct } from '@/lib/buffet'
+import { UNCATEGORIZED_LABEL, validateProduct } from '@/lib/buffet'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useUiStore } from '@/store/uiStore'
-import type { Product, ProductCategory } from '@/types'
+import type { Product } from '@/types'
 import { Button } from '../ui/Button'
-import { Field, TextInput } from '../ui/Field'
+import { Field, Select, TextInput } from '../ui/Field'
 import { Modal } from '../ui/Modal'
 import { MoneyInput } from '../ui/MoneyInput'
-import { SegmentedControl } from '../ui/SegmentedControl'
 import { Switch } from '../ui/Switch'
 
-export function ProductForm({ product, onClose }: { product?: Product; onClose: () => void }) {
+interface ProductFormProps {
+  product?: Product
+  /** Pre-selected category for a new item (e.g. the active buffet filter). */
+  defaultCategoryId?: number | null
+  onClose: () => void
+}
+
+export function ProductForm({ product, defaultCategoryId = null, onClose }: ProductFormProps) {
   const createProduct = useSettingsStore((s) => s.createProduct)
   const updateProduct = useSettingsStore((s) => s.updateProduct)
   const pushToast = useUiStore((s) => s.pushToast)
-  const ids = { name: useId(), price: useId(), stock: useId(), active: useId(), counted: useId() }
+  const categories = useSettingsStore((s) => s.categories)
+  const ids = { name: useId(), category: useId(), price: useId(), stock: useId(), active: useId(), counted: useId() }
 
   const [name, setName] = useState(product?.name ?? '')
-  const [category, setCategory] = useState<ProductCategory>(product?.category ?? 'drink')
+  // Uncategorised stays a valid choice: such items work everywhere.
+  const [categoryId, setCategoryId] = useState<number | null>(product ? product.categoryId : defaultCategoryId)
   const [price, setPrice] = useState<number | null>(product?.price ?? null)
   const [active, setActive] = useState(product?.active ?? true)
   const [counted, setCounted] = useState(product ? product.stockQuantity !== null : true)
@@ -34,7 +42,7 @@ export function ProductForm({ product, onClose }: { product?: Product; onClose: 
     }
     setSaving(true)
     setError(null)
-    const input = { name, category, price: price ?? 0, active, stockQuantity: counted ? stock : null }
+    const input = { name, categoryId, price: price ?? 0, active, stockQuantity: counted ? stock : null }
     try {
       if (product) await updateProduct(product.id, input)
       else await createProduct(input)
@@ -74,15 +82,20 @@ export function ProductForm({ product, onClose }: { product?: Product; onClose: 
           <TextInput id={ids.name} value={name} maxLength={40} autoFocus placeholder="مثلاً آبمیوه" onChange={(e) => setName(e.target.value)} />
         </Field>
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-label-secondary">دسته</span>
-          <SegmentedControl
-            aria-label="دسته‌ی کالا"
-            options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: PRODUCT_CATEGORY_LABEL[c] }))}
-            value={category}
-            onChange={setCategory}
-          />
-        </div>
+        <Field label="دسته" htmlFor={ids.category}>
+          <Select
+            id={ids.category}
+            value={categoryId === null ? 'none' : String(categoryId)}
+            onChange={(e) => setCategoryId(e.target.value === 'none' ? null : Number(e.target.value))}
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name}
+              </option>
+            ))}
+            <option value="none">{UNCATEGORIZED_LABEL}</option>
+          </Select>
+        </Field>
 
         <Field label="قیمت" htmlFor={ids.price} hint="تغییر قیمت فقط روی سفارش‌های بعدی اثر دارد.">
           <MoneyInput id={ids.price} value={price} invalid={price === null && error !== null} onChange={setPrice} />

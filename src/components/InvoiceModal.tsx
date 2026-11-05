@@ -183,7 +183,7 @@ function InvoiceDialog({ stationId, at }: CheckoutTarget) {
               )}
               <div className="mt-2 flex items-baseline justify-between">
                 <span className="text-sm font-medium">مبلغ قابل پرداخت</span>
-                <span data-testid="invoice-total" className="text-2xl font-bold tracking-tight text-gold tabular-nums">
+                <span data-testid="invoice-total" className="text-2xl font-bold tracking-tight text-brand tabular-nums">
                   {formatToman(invoice.total)}
                 </span>
               </div>

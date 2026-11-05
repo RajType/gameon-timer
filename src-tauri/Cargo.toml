@@ -25,6 +25,7 @@ tauri-plugin-dialog = "2.8"
 sha2 = "0.11.1"
 uuid = { version = "1.29.0", features = ["v4"] }
 thiserror = "2"
+base64 = "0.22"
 
 # Small, fast binaries — https://v2.tauri.app/concept/size/
 [profile.release]

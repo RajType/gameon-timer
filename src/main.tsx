@@ -4,6 +4,10 @@ import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/vazirmatn'
 import './index.css'
 import App from './App'
+import { applyCachedBranding } from './lib/branding'
+
+// Before the first paint, so a custom brand colour does not flash gold.
+applyCachedBranding()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element #root not found')

@@ -28,7 +28,7 @@ fn set_stock(conn: &mut Connection, product: &str, value: Option<i64>) {
     let p = repo::load_products(conn, false).unwrap().into_iter().find(|p| p.id == product).unwrap();
     let input = ProductInput {
         name: p.name,
-        category: p.category,
+        category_id: p.category_id,
         price: p.price,
         active: p.active,
         stock_quantity: value,
@@ -177,7 +177,7 @@ fn available_items_exclude_inactive_and_sold_out() {
     chips.active = false;
     let input = ProductInput {
         name: chips.name,
-        category: chips.category,
+        category_id: chips.category_id,
         price: chips.price,
         active: false,
         stock_quantity: None,
@@ -197,7 +197,7 @@ fn product_admin_validation() {
     let (mut conn, _) = seeded(dir.path());
     let good = ProductInput {
         name: "آبمیوه".into(),
-        category: "drink".into(),
+        category_id: Some(1),
         price: 35_000,
         active: true,
         stock_quantity: Some(12),
@@ -210,8 +210,8 @@ fn product_admin_validation() {
     for input in [
         bad(&|i| i.stock_quantity = Some(-1)),
         bad(&|i| i.name = "   ".into()),
-        bad(&|i| i.name = "نوشابه".into()), // duplicate
-        bad(&|i| i.category = "toys".into()),
+        bad(&|i| i.name = "نوشابه".into()),  // duplicate
+        bad(&|i| i.category_id = Some(999)), // no such category
         bad(&|i| i.price = -1),
         bad(&|i| i.price = 100_000_001),
     ] {
@@ -235,9 +235,7 @@ fn upgrade_from_v2_keeps_existing_items_and_orders_sellable() {
     let dir = temp();
     {
         let (mut conn, _) = open_store_with(dir.path(), &MIGRATIONS[..2]).unwrap();
-        let t = conn.transaction().unwrap();
-        gameon_timer_lib::seed::seed_defaults(&t, T0).unwrap();
-        t.commit().unwrap();
+        seed_like_v1(&conn);
         let s = tx(&mut conn, |c| repo::start_session(c, "station-1", None, T0)).unwrap();
         // v2 schema has no stock columns: insert an order the way v2 did.
         conn.execute(

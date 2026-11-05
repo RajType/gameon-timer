@@ -1,13 +1,16 @@
 import { Play } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { BrandingSection } from '@/components/admin/BrandingSection'
+import { CategoryManager } from '@/components/admin/CategoryManager'
 import { ReceiptPreview } from '@/components/admin/ReceiptPreview'
 import { Button } from '@/components/ui/Button'
-import { Field, Select, TextArea, TextInput } from '@/components/ui/Field'
+import { Field, Select, TextArea } from '@/components/ui/Field'
 import { Section, SettingRow } from '@/components/ui/Section'
 import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { Switch } from '@/components/ui/Switch'
 import { errorMessage } from '@/lib/api'
 import { applyRounding } from '@/lib/billing'
+import { applyBranding, DEFAULT_BRAND_COLOR } from '@/lib/branding'
 import { formatNumber, formatToman, toPersianDigits } from '@/lib/currency'
 import { ROUNDING_MODE_LABEL, ROUNDING_UNITS } from '@/lib/rounding'
 import { playSound, SOUND_PRESET_LABEL } from '@/lib/sound'
@@ -27,7 +30,20 @@ function SettingsForm({ initial }: { initial: Settings }) {
   const [draft, setDraft] = useState<Settings>(initial)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const ids = { store: useId(), header: useId(), footer: useId(), unit: useId(), alert: useId(), pause: useId(), volume: useId() }
+  const ids = { header: useId(), footer: useId(), unit: useId(), alert: useId(), pause: useId(), volume: useId() }
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+
+  // Live preview: the whole app takes the draft brand colour while editing;
+  // leaving without saving restores the saved one.
+  useEffect(() => {
+    applyBranding(draft.brandColor)
+  }, [draft.brandColor])
+  useEffect(
+    () => () => {
+      applyBranding(useSettingsStore.getState().settings?.brandColor ?? DEFAULT_BRAND_COLOR)
+    },
+    [],
+  )
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial)
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setDraft((d) => ({ ...d, [key]: value }))
@@ -49,12 +65,11 @@ function SettingsForm({ initial }: { initial: Settings }) {
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-8 pb-28">
+      <BrandingSection draft={draft} set={set} onLogo={setLogoUrl} />
+
       <Section title="رسید" description="متن چاپ‌شده روی رسید. هر فاکتور متن زمان صدور خود را نگه می‌دارد.">
         <div className="flex gap-6 p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
-            <Field label="نام مجموعه" htmlFor={ids.store}>
-              <TextInput id={ids.store} value={draft.storeName} maxLength={40} onChange={(e) => set('storeName', e.target.value)} />
-            </Field>
             <Field label="سربرگ" htmlFor={ids.header} hint="مثلاً آدرس و شماره‌ی تماس. هر خط جدا چاپ می‌شود.">
               <TextArea id={ids.header} value={draft.receiptHeader} maxLength={300} rows={3} onChange={(e) => set('receiptHeader', e.target.value)} />
             </Field>
@@ -63,7 +78,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
             </Field>
           </div>
           <div className="grid shrink-0 place-items-start rounded-2xl bg-black/25 p-5">
-            <ReceiptPreview settings={draft} />
+            <ReceiptPreview settings={draft} logoUrl={logoUrl} />
           </div>
         </div>
       </Section>
@@ -126,7 +141,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
               step={5}
               value={draft.soundVolume}
               onChange={(e) => set('soundVolume', Number(e.target.value))}
-              className="flex-1 accent-[#d4af37]"
+              className="flex-1 accent-brand"
             />
             <span className="w-8 text-end text-xs text-label-secondary tabular-nums">{formatNumber(draft.soundVolume)}</span>
           </div>
@@ -150,6 +165,8 @@ function SettingsForm({ initial }: { initial: Settings }) {
           </Select>
         </SettingRow>
       </Section>
+
+      <CategoryManager />
 
       <div className="fixed bottom-5 start-[calc(15rem+1.5rem)] end-6 z-20 mx-auto flex max-w-[1100px] items-center gap-3 rounded-2xl border border-white/10 bg-surface-raised px-4 py-3 shadow-2xl shadow-black/60">
         <p className="flex-1 text-[13px] text-label-secondary">

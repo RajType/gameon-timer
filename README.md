@@ -1,8 +1,8 @@
 # GameOn Timer & POS
 
 Desktop console-center manager for GameOn: station timers, session control
-(start / pause / resume / controller count), buffet tabs, checkout billing and
-admin settings. Persian UI, strictly RTL, Apple-inspired dark theme.
+(start / pause / resume / controller count), buffet tabs and inventory,
+checkout billing, store branding and admin settings. Persian UI, strictly RTL, Apple-inspired dark theme.
 
 **Stack:** Tauri 2 (Rust, SQLite via `rusqlite`) · React 19 · TypeScript · Vite · Tailwind CSS v4 · Zustand
 
@@ -108,6 +108,49 @@ as invoice lines; name and unit price are snapshotted at order time.
   order line returns to stock exactly the units that were taken from it.
 - The stock field in the item form is a count of what is on hand now (stocktake).
 
+### Branding & categories
+
+**تنظیمات → برند** sets the store name (sidebar and receipt header), the brand
+colour and a logo. They are saved with the rest of the settings
+(`update_settings`).
+
+- **Brand colour** drives the whole UI through CSS variables:
+  - `applyBranding()` sets `--brand-color` and `--brand-contrast` on `:root`.
+  - Tailwind's `brand` tokens (`bg-brand`, `text-brand`, `brand-300…700`) are
+    derived from those variables with `color-mix`. No component hard-codes the
+    gold.
+  - Text on brand surfaces switches between black and white for contrast, and
+    a warning appears when a colour is hard to read on the dark canvas.
+  - While editing, the colour previews live. Leaving without saving restores
+    the saved colour.
+  - The saved colour is cached locally and applied before the first render, so
+    a restart does not flash gold.
+- **Logo**:
+  - The file is chosen with the native dialog (`pick_logo_file`), and only its
+    absolute path is stored.
+  - Rust validates the path (absolute; png/jpg/webp/gif/svg; at most 2 MB).
+  - The image is served to the UI as a `data:` URL (`read_logo`), so no extra
+    file-system scope is opened.
+  - A missing file shows an error in settings. It never blocks the app.
+- **Storage.** The settings live in the existing typed `settings` row (columns
+  `brand_color` and `logo_path`), not in a separate key/value table.
+
+**Categories** are a `categories` table (name, colour). `products.category_id`
+is nullable, and `NULL` means uncategorised.
+
+- They are managed under **تنظیمات → دسته‌بندی کالا**.
+- **بوفه** filters by category and has a «بدون دسته» view. Selected items can
+  be moved to another category, or out of all of them, in one request
+  (`assign_products_category`).
+- Re-categorising is all-or-nothing, in one transaction:
+  - A bulk move with one unknown item changes nothing.
+  - Deleting a category moves its items to the chosen target first.
+  - `ON DELETE SET NULL` is only a safety net.
+- Uncategorised items sell, order and invoice exactly like the others.
+- **Upgrading to 0004.** The old fixed `category` values (drink/snack/food)
+  become the categories «نوشیدنی», «تنقلات» and «غذا», with every item keeping
+  its group.
+
 ### Backups
 
 - Automatic: once a day at startup (last 14 kept), before migrations, and
@@ -121,18 +164,19 @@ as invoice lines; name and unit price are snapshotted at order time.
 ```
 src/
   components/           dashboard building blocks (StationCard, SessionMeter, InvoiceModal, FloorMap, …)
-    buffet/             BuffetOrderModal, ProductForm, StockBadge
-    admin/              StationForm, RatePlanForm, ReceiptPreview
-    ui/                 Button, Field, MoneyInput, Switch, Modal, Popover, Section, …
+    buffet/             BuffetOrderModal, ProductForm, StockBadge, CategoryDot
+    admin/              StationForm, RatePlanForm, ReceiptPreview, BrandingSection, CategoryManager
+    ui/                 Button, Field, MoneyInput, ColorField, Switch, Modal, Popover, Section, …
   pages/                Dashboard, FloorPage, BuffetPage, StationsPage, RatesPage, SettingsPage, DataPage
   store/                Zustand: appStore (boot), stationStore (floor), settingsStore, uiStore
   lib/                  api (typed commands), billing (mirror of Rust), currency, time,
-                        legacy (localStorage hand-off), alerts, sound, rates, station
+                        legacy (localStorage hand-off), alerts, sound, rates, station,
+                        buffet (stock + category helpers), branding (CSS variables, contrast)
   types/                shared shapes (match src-tauri/src/models.rs)
 src-tauri/
   migrations/           versioned SQL
   src/                  db (migrations), repo (sessions/checkout), admin, billing, legacy,
-                        backup, bootstrap, commands, state
+                        backup, bootstrap, logo (path validation, data URL), commands, state
   tests/                integration tests + fixtures (real v0.1.0 payload, billing golden cases)
 e2e/                    WebDriver tests against the real app (tauri-driver)
 ```
@@ -141,9 +185,9 @@ e2e/                    WebDriver tests against the real app (tauri-driver)
 
 | Layer | Command | Covers |
 | --- | --- | --- |
-| Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation, buffet stock (never negative, active session only, returns, invoice lines, v2 → v3 upgrade) |
-| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off, layout helpers, double-submission guards, live floor map and buffet components (jsdom) |
-| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart, live floor map (read-only, start/checkout once, keyboard, window resize), buffet (stock, order on an open session, sold out, invoice line, restart) |
+| Rust unit + integration | `npm run test:rust` | migrations (upgrade, rollback, refusal), restart & crash recovery, invoice consistency & immutability, rate/price snapshots, legacy import + duplicate prevention, backup/restore validation, buffet stock (never negative, active session only, returns, invoice lines, v2 → v3 upgrade), branding & categories (v3 → v4 upgrade keeps every item's group, colour/logo validation, category CRUD, atomic delete-with-reassign and bulk move, uncategorised items still sell) |
+| TypeScript | `npm test` | billing parity with Rust (shared golden fixture), input parsing, alerts, legacy hand-off, layout helpers, double-submission guards, live floor map, buffet and category filter/bulk move, branding (CSS variables, contrast, startup cache), settings brand + category panels (jsdom) |
+| End-to-end (Linux) | `xvfb-run -a npm run e2e` | real WebKitGTK window: v0.1.0 → v0.2.0 upgrade, duplicate import, restart + `kill -9`, admin screens, rounding at checkout, backup → restore, floor-map drag (pointer + keyboard) persisting across restart, live floor map (read-only, start/checkout once, keyboard, window resize), buffet (stock, order on an open session, sold out, invoice line, restart), branding & categories (live brand colour on the real UI, store name, logo, category CRUD, delete with reassign, bulk move, filter, restart) |
 
 E2E needs `tauri-driver` (`cargo install tauri-driver --locked`), `WebKitWebDriver`
 (`webkit2gtk-driver` package) and a debug build with the embedded frontend:
